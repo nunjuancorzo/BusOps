@@ -1,0 +1,647 @@
+@page "/autobuses"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Autobuses</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#autobusModal" @onclick="MostrarFormularioNuevo">
+        <span class="bi bi-plus-circle"></span> Nuevo Autobús
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Lista de Autobuses</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Matrícula</th>
+                        <th>Marca/Modelo</th>
+                        <th>Capacidad</th>
+                        <th>Año</th>
+                        <th>Kilometraje</th>
+                        <th>Estado</th>
+                        <th>Próxima Revisión</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var autobus in autobuses)
+                    {
+                        <tr>
+                            <td><strong>@autobus.Matricula</strong></td>
+                            <td>@autobus.Marca @autobus.Modelo</td>
+                            <td>@autobus.CapacidadPasajeros</td>
+                            <td>@autobus.AñoFabricacion</td>
+                            <td>@autobus.Kilometraje.ToString("N0") km</td>
+                            <td>
+                                <span class="badge @ObtenerClaseEstado(autobus.Estado)">
+                                    @autobus.Estado.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>@(autobus.ProximaRevision?.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#autobusModal" @onclick="() => EditarAutobus(autobus)" title="Editar">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" @onclick="() => CrearMantenimiento(autobus)" title="Crear Mantenimiento">
+                                    <i class="bi bi-wrench"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarAutobus(autobus.Id)" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!autobuses.Any())
+            {
+                <p class="text-center text-muted py-4">No hay autobuses registrados</p>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Autobús -->
+<div class="modal fade" id="autobusModal" tabindex="-1" aria-labelledby="autobusModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #FF9800;">
+                <h5 class="modal-title" id="autobusModalLabel">@(autobusSeleccionado.Id == 0 ? "Nuevo Autobús" : "Editar Autobús")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-between">
+                    <div>
+                        @if (autobusSeleccionado.Id > 0)
+                        {
+                            <button type="button" class="btn btn-warning" @onclick="() => CrearMantenimientoDesdeModal(autobusSeleccionado)">
+                                <i class="bi bi-wrench"></i> Crear Mantenimiento
+                            </button>
+                        }
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </button>
+                        <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarAutobus">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Pestañas -->
+            <ul class="nav nav-tabs px-3 pt-2" style="flex-shrink: 0; background-color: white;">
+                <li class="nav-item">
+                    <button class="nav-link @(tabActiva == "datos" ? "active" : "")" @onclick='() => CambiarTab("datos")'>
+                        <i class="bi bi-bus-front me-2"></i>Datos del Autobús
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(tabActiva == "documentos" ? "active" : "")" @onclick='() => CambiarTab("documentos")'>
+                        <i class="bi bi-file-earmark-text me-2"></i>Documentación
+                    </button>
+                </li>
+            </ul>
+            <!-- Contenido con scroll -->
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <!-- Pestaña de Datos -->
+                <div class="@(tabActiva == "datos" ? "" : "d-none")">
+                    <!-- Datos Básicos -->
+                    <h6 class="mb-3"><i class="bi bi-info-circle text-primary"></i> Datos Básicos</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Matrícula *</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.Matricula" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Marca *</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.Marca" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Modelo *</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.Modelo" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Año Fabricación *</label>
+                            <input type="number" class="form-control" @bind="autobusSeleccionado.AñoFabricacion" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Estado *</label>
+                            <select class="form-select" @bind="autobusSeleccionado.Estado">
+                                @foreach (var estado in Enum.GetValues<EstadoAutobus>())
+                                {
+                                    <option value="@estado">@estado.GetDisplayName()</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Kilometraje</label>
+                            <input type="number" step="0.01" class="form-control" @bind="autobusSeleccionado.Kilometraje" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Código SAE</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.CodigoSAE" />
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <!-- Identificación -->
+                    <h6 class="mb-3"><i class="bi bi-card-list text-info"></i> Identificación</h6>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Tipo Tarjeta</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.TipoTarjeta" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Número Tarjeta</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.NumeroTarjeta" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Número Bastidor</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.NumeroBastidor" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Número Obra</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.NumeroObra" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Libro</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.Libro" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Altura (cm)</label>
+                            <input type="number" class="form-control" @bind="autobusSeleccionado.Altura" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Longitud (dm)</label>
+                            <input type="number" class="form-control" @bind="autobusSeleccionado.Longitud" />
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <!-- Plazas -->
+                    <h6 class="mb-3"><i class="bi bi-people text-success"></i> Capacidad y Plazas</h6>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Plazas Sentado</label>
+                            <input type="number" class="form-control" @bind="autobusSeleccionado.PlazasSentado" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Plazas de Pie</label>
+                            <input type="number" class="form-control" @bind="autobusSeleccionado.PlazasDePie" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Plazas Adaptadas</label>
+                            <input type="number" class="form-control" @bind="autobusSeleccionado.PlazasAdaptadas" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Capacidad Total</label>
+                            <input type="number" class="form-control" @bind="autobusSeleccionado.CapacidadPasajeros" />
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <!-- Fechas -->
+                    <h6 class="mb-3"><i class="bi bi-calendar text-warning"></i> Fechas de Matriculación y Revisiones</h6>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Primera Matriculación</label>
+                            <input type="date" class="form-control" @bind="primeraMatriculacion" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Fecha Matriculación</label>
+                            <input type="date" class="form-control" @bind="fechaMatriculacion" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Última Revisión</label>
+                            <input type="date" class="form-control" @bind="fechaUltimaRevision" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Próxima Revisión</label>
+                            <input type="date" class="form-control" @bind="fechaProximaRevision" />
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <!-- Garantías -->
+                    <h6 class="mb-3"><i class="bi bi-shield-check text-primary"></i> Garantías</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fin Garantía Carrocería</label>
+                            <input type="date" class="form-control" @bind="finGarantiaCarroceria" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fin Garantía Chasis</label>
+                            <input type="date" class="form-control" @bind="finGarantiaChasis" />
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <!-- Caducidades -->
+                    <h6 class="mb-3"><i class="bi bi-exclamation-triangle text-danger"></i> Caducidades</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Caducidad Extintores</label>
+                            <input type="date" class="form-control" @bind="caducidadExtintores" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Caducidad Escolar</label>
+                            <input type="date" class="form-control" @bind="caducidadEscolar" />
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <!-- Tacógrafo -->
+                    <h6 class="mb-3"><i class="bi bi-speedometer2 text-info"></i> Tacógrafo</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Tacógrafo</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.Tacografo" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Descarga Tacógrafo</label>
+                            <input type="date" class="form-control" @bind="descargaTacografo" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Periodo Descarga</label>
+                            <input type="text" class="form-control" @bind="autobusSeleccionado.PeriodoDescargaTacografo" placeholder="Ej: 90 días" />
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <!-- ITV -->
+                    <h6 class="mb-3"><i class="bi bi-clipboard-check text-success"></i> ITV</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Última Revisión ITV</label>
+                            <input type="date" class="form-control" @bind="ultimaRevisionITV" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Próxima Revisión ITV</label>
+                            <input type="date" class="form-control" @bind="proximaRevisionITV" />
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Pestaña de Documentación -->
+                <div class="@(tabActiva == "documentos" ? "" : "d-none")">
+                    @if (autobusSeleccionado.Id == 0)
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Primero guarda el autobús para poder gestionar documentos.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#documentoModal" @onclick="NuevoDocumento">
+                                <i class="bi bi-plus-circle"></i> Agregar Documento
+                            </button>
+                        </div>
+                        
+                        @if (documentos.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Nombre</th>
+                                            <th>Descripción</th>
+                                            <th>Fecha Subida</th>
+                                            <th>Vencimiento</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var doc in documentos)
+                                        {
+                                            <tr>
+                                                <td><span class="badge bg-secondary">@doc.TipoDocumento</span></td>
+                                                <td>@doc.NombreArchivo</td>
+                                                <td>@doc.Descripcion</td>
+                                                <td>@doc.FechaSubida.ToString("dd/MM/yyyy")</td>
+                                                <td>@(doc.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                                <td>
+                                                    <a href="@doc.RutaArchivo" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarDocumento(doc.Id)" title="Eliminar">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-center text-muted py-4">No hay documentos registrados para este autobús</p>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para agregar documento -->
+<div class="modal fade" id="documentoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header text-white" style="background-color: #FF9800;">
+                <h5 class="modal-title">Agregar Documento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Documento *</label>
+                    <select class="form-select" @bind="nuevoDoc.TipoDocumento">
+                        <option value="Ficha Técnica">Ficha Técnica</option>
+                        <option value="Seguro">Seguro</option>
+                        <option value="ITV">ITV / Inspección Técnica</option>
+                        <option value="Permiso Circulación">Permiso de Circulación</option>
+                        <option value="Mantenimiento">Registro de Mantenimiento</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre del Archivo *</label>
+                    <input type="text" class="form-control" @bind="nuevoDoc.NombreArchivo" placeholder="Ej: ITV_2025.pdf" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <textarea class="form-control" rows="2" @bind="nuevoDoc.Descripcion" placeholder="Descripción opcional del documento"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Archivo *</label>
+                    <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+                    <small class="text-muted">Selecciona un archivo PDF, Word o imagen</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Fecha de Vencimiento (opcional)</label>
+                    <input type="date" class="form-control" @bind="fechaVencimientoDoc" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" @onclick="GuardarDocumento">
+                    <i class="bi bi-save me-1"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Autobus> autobuses = new();
+    private Autobus autobusSeleccionado = new();
+    private DateTime? fechaUltimaRevision;
+    private DateTime? fechaProximaRevision;
+    private DateTime? primeraMatriculacion;
+    private DateTime? fechaMatriculacion;
+    private DateTime? finGarantiaCarroceria;
+    private DateTime? finGarantiaChasis;
+    private DateTime? caducidadExtintores;
+    private DateTime? caducidadEscolar;
+    private DateTime? descargaTacografo;
+    private DateTime? ultimaRevisionITV;
+    private DateTime? proximaRevisionITV;
+    private List<Documento> documentos = new();
+    private Documento nuevoDoc = new();
+    private DateTime? fechaVencimientoDoc;
+    private string tabActiva = "datos";
+    private IBrowserFile? archivoSeleccionado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarAutobuses();
+    }
+
+    private async Task CargarAutobuses()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        autobuses = await context.Autobuses.ToListAsync();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        autobusSeleccionado = new Autobus
+        {
+            Estado = EstadoAutobus.Disponible,
+            AñoFabricacion = DateTime.Now.Year
+        };
+        fechaUltimaRevision = null;
+        fechaProximaRevision = null;
+        primeraMatriculacion = null;
+        fechaMatriculacion = null;
+        finGarantiaCarroceria = null;
+        finGarantiaChasis = null;
+        caducidadExtintores = null;
+        caducidadEscolar = null;
+        descargaTacografo = null;
+        ultimaRevisionITV = null;
+        proximaRevisionITV = null;
+        documentos = new();
+        tabActiva = "datos";
+    }
+
+    private async Task EditarAutobus(Autobus autobus)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var autobusDb = await context.Autobuses
+            .Include(a => a.Documentos)
+            .FirstOrDefaultAsync(a => a.Id == autobus.Id);
+            
+        if (autobusDb != null)
+        {
+            autobusSeleccionado = autobusDb;
+            documentos = autobusDb.Documentos.ToList();
+            fechaUltimaRevision = autobusDb.FechaUltimaRevision;
+            fechaProximaRevision = autobusDb.ProximaRevision;
+            primeraMatriculacion = autobusDb.PrimeraMatriculacion;
+            fechaMatriculacion = autobusDb.FechaMatriculacion;
+            finGarantiaCarroceria = autobusDb.FinGarantiaCarroceria;
+            finGarantiaChasis = autobusDb.FinGarantiaChasis;
+            caducidadExtintores = autobusDb.CaducidadExtintores;
+            caducidadEscolar = autobusDb.CaducidadEscolar;
+            descargaTacografo = autobusDb.DescargaTacografo;
+            ultimaRevisionITV = autobusDb.UltimaRevisionITV;
+            proximaRevisionITV = autobusDb.ProximaRevisionITV;
+        }
+        tabActiva = "datos";
+    }
+
+    private async Task GuardarAutobus()
+    {
+        autobusSeleccionado.FechaUltimaRevision = fechaUltimaRevision;
+        autobusSeleccionado.ProximaRevision = fechaProximaRevision;
+        autobusSeleccionado.PrimeraMatriculacion = primeraMatriculacion;
+        autobusSeleccionado.FechaMatriculacion = fechaMatriculacion;
+        autobusSeleccionado.FinGarantiaCarroceria = finGarantiaCarroceria;
+        autobusSeleccionado.FinGarantiaChasis = finGarantiaChasis;
+        autobusSeleccionado.CaducidadExtintores = caducidadExtintores;
+        autobusSeleccionado.CaducidadEscolar = caducidadEscolar;
+        autobusSeleccionado.DescargaTacografo = descargaTacografo;
+        autobusSeleccionado.UltimaRevisionITV = ultimaRevisionITV;
+        autobusSeleccionado.ProximaRevisionITV = proximaRevisionITV;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (autobusSeleccionado.Id == 0)
+        {
+            context.Autobuses.Add(autobusSeleccionado);
+            await context.SaveChangesAsync();
+            autobusSeleccionado.Id = autobusSeleccionado.Id; // Recargar para tener el ID
+        }
+        else
+        {
+            context.Autobuses.Update(autobusSeleccionado);
+            await context.SaveChangesAsync();
+        }
+        
+        await CargarAutobuses();
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('autobusModal')).hide()");
+        StateHasChanged();
+    }
+
+    private void CambiarTab(string tab)
+    {
+        tabActiva = tab;
+        StateHasChanged();
+    }
+
+    private void NuevoDocumento()
+    {
+        nuevoDoc = new Documento
+        {
+            TipoDocumento = "Ficha Técnica",
+            FechaSubida = DateTime.Now,
+            AutobusId = autobusSeleccionado.Id
+        };
+        fechaVencimientoDoc = null;
+        archivoSeleccionado = null;
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        archivoSeleccionado = e.File;
+        nuevoDoc.NombreArchivo = archivoSeleccionado.Name;
+    }
+
+    private async Task GuardarDocumento()
+    {
+        if (archivoSeleccionado == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debes seleccionar un archivo");
+            return;
+        }
+
+        var rutaDocumentos = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "documentos", "autobuses");
+        Directory.CreateDirectory(rutaDocumentos);
+
+        var nombreArchivo = $"{autobusSeleccionado.Id}_{DateTime.Now:yyyyMMddHHmmss}_{archivoSeleccionado.Name}";
+        var rutaCompleta = Path.Combine(rutaDocumentos, nombreArchivo);
+
+        using (var stream = new FileStream(rutaCompleta, FileMode.Create))
+        {
+            await archivoSeleccionado.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(stream);
+        }
+
+        nuevoDoc.RutaArchivo = $"/documentos/autobuses/{nombreArchivo}";
+        nuevoDoc.FechaVencimiento = fechaVencimientoDoc;
+        nuevoDoc.AutobusId = autobusSeleccionado.Id;
+        
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.Documentos.Add(nuevoDoc);
+        await context.SaveChangesAsync();
+        
+        documentos = await context.Documentos
+            .Where(d => d.AutobusId == autobusSeleccionado.Id)
+            .ToListAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('documentoModal')).hide()");
+        StateHasChanged();
+    }
+
+    private async Task EliminarDocumento(int documentoId)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de que deseas eliminar este documento?");
+        if (!confirmar) return;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        var documento = await context.Documentos.FindAsync(documentoId);
+        if (documento != null)
+        {
+            context.Documentos.Remove(documento);
+            await context.SaveChangesAsync();
+            documentos = await context.Documentos.Where(d => d.AutobusId == autobusSeleccionado.Id).ToListAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task EliminarAutobus(int id)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de que deseas eliminar este autobús?");
+        if (!confirmar) return;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        var autobus = await context.Autobuses.FindAsync(id);
+        if (autobus != null)
+        {
+            context.Autobuses.Remove(autobus);
+            await context.SaveChangesAsync();
+            await CargarAutobuses();
+        }
+    }
+
+    private void CrearMantenimiento(Autobus autobus)
+    {
+        NavigationManager.NavigateTo($"/mantenimiento?autobusId={autobus.Id}&matricula={autobus.Matricula}");
+    }
+
+    private async Task CrearMantenimientoDesdeModal(Autobus autobus)
+    {
+        // Cerrar el modal actual
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('autobusModal')).hide()");
+        
+        // Navegar a la página de mantenimiento
+        NavigationManager.NavigateTo($"/mantenimiento?autobusId={autobus.Id}&matricula={autobus.Matricula}");
+    }
+
+    private string ObtenerClaseEstado(EstadoAutobus estado)
+    {
+        return estado switch
+        {
+            EstadoAutobus.Disponible => "bg-success",
+            EstadoAutobus.EnServicio => "bg-primary",
+            EstadoAutobus.EnMantenimiento => "bg-warning",
+            EstadoAutobus.FueraDeServicio => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}

@@ -1,0 +1,592 @@
+@page "/clientes"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@using BusOps.Models
+@using BusOps.Helpers
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>BusOps - Clientes</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#clienteModal" @onclick="MostrarFormularioNuevo">
+        <i class="bi bi-plus-circle"></i> Nuevo Cliente
+    </button>
+</div>
+
+<!-- Estadísticas -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h6>Total Clientes</h6>
+                <h3>@clientes.Count</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h6>Particulares</h6>
+                <h3>@clientes.Count(c => c.Tipo == TipoCliente.Particular)</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h6>Empresas</h6>
+                <h3>@clientes.Count(c => c.Tipo == TipoCliente.Empresa)</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <h6>Agencias</h6>
+                <h3>@clientes.Count(c => c.Tipo == TipoCliente.Agencia)</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <input type="text" class="form-control" placeholder="Buscar por nombre, NIF o email..." @bind="busqueda" @bind:event="oninput" />
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="filtroTipo">
+                    <option value="">Todos los tipos</option>
+                    <option value="Particular">Particulares</option>
+                    <option value="Empresa">Empresas</option>
+                    <option value="Agencia">Agencias</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="filtroEstado">
+                    <option value="">Todos los estados</option>
+                    <option value="true">Activos</option>
+                    <option value="false">Inactivos</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lista de clientes -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Nombre/Empresa</th>
+                        <th>NIF/CIF</th>
+                        <th>Contacto</th>
+                        <th>Ciudad</th>
+                        <th>Registro</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var cliente in ClientesFiltrados)
+                    {
+                        <tr>
+                            <td>
+                                <span class="badge @ObtenerClaseTipo(cliente.Tipo)">
+                                    @cliente.Tipo.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>
+                                <strong>
+                                    @if (cliente.Tipo == TipoCliente.Particular)
+                                    {
+                                        @($"{cliente.Nombre} {cliente.Apellidos}")
+                                    }
+                                    else
+                                    {
+                                        @cliente.NombreEmpresa
+                                    }
+                                </strong>
+                                @if (cliente.Tipo != TipoCliente.Particular && !string.IsNullOrEmpty(cliente.Nombre))
+                                {
+                                    <br /><small class="text-muted">Contacto: @cliente.Nombre</small>
+                                }
+                            </td>
+                            <td>@cliente.NIF</td>
+                            <td>
+                                <i class="bi bi-telephone"></i> @cliente.Telefono<br />
+                                <i class="bi bi-envelope"></i> @cliente.Email
+                            </td>
+                            <td>@cliente.Ciudad</td>
+                            <td>@cliente.FechaRegistro.ToShortDateString()</td>
+                            <td>
+                                @if (cliente.Activo)
+                                {
+                                    <span class="badge bg-success">Activo</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactivo</span>
+                                }
+                            </td>
+                            <td>
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#clienteModal" @onclick="() => EditarCliente(cliente)" title="Editar">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarCliente(cliente.Id)" title="Eliminar">
+                                        <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Cliente -->
+<div class="modal fade" id="clienteModal" tabindex="-1" aria-labelledby="clienteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #2196F3;">
+                <h5 class="modal-title" id="clienteModalLabel">@(clienteSeleccionado.Id == 0 ? "Nuevo Cliente" : "Editar Cliente")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarCliente">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Tabs de navegación -->
+            <ul class="nav nav-tabs px-3 pt-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <li class="nav-item">
+                    <button type="button" class="nav-link @(tabActiva == "datos" ? "active" : "")" @onclick='() => tabActiva = "datos"'>
+                        <i class="bi bi-info-circle"></i> Datos
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button type="button" class="nav-link @(tabActiva == "documentos" ? "active" : "")" @onclick='() => tabActiva = "documentos"' disabled="@(clienteSeleccionado.Id == 0)">
+                        <i class="bi bi-file-earmark-text"></i> Documentos
+                    </button>
+                </li>
+            </ul>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <!-- Tab Datos -->
+                <div class="@(tabActiva == "datos" ? "" : "d-none")">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Tipo de Cliente *</label>
+                        <select class="form-select" @bind="clienteSeleccionado.Tipo">
+                            <option value="@TipoCliente.Particular">Particular</option>
+                            <option value="@TipoCliente.Empresa">Empresa</option>
+                            <option value="@TipoCliente.Agencia">Agencia</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">NIF/CIF *</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.NIF" />
+                    </div>
+                </div>
+
+                @if (clienteSeleccionado.Tipo == TipoCliente.Particular)
+                {
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre *</label>
+                            <input type="text" class="form-control" @bind="clienteSeleccionado.Nombre" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Apellidos</label>
+                            <input type="text" class="form-control" @bind="clienteSeleccionado.Apellidos" />
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre de la Empresa *</label>
+                            <input type="text" class="form-control" @bind="clienteSeleccionado.NombreEmpresa" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Persona de Contacto</label>
+                            <input type="text" class="form-control" @bind="clienteSeleccionado.Nombre" />
+                        </div>
+                    </div>
+                }
+
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Dirección</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.Direccion" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Ciudad</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.Ciudad" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Código Postal</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.CodigoPostal" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Teléfono *</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.Telefono" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Email *</label>
+                        <input type="email" class="form-control" @bind="clienteSeleccionado.Email" />
+                    </div>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" @bind="clienteSeleccionado.Activo" id="activoCheck">
+                    <label class="form-check-label" for="activoCheck">
+                        Cliente activo
+                    </label>
+                </div>
+
+                <h6 class="mb-3 mt-4">Datos Financieros</h6>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Cuenta Bancaria</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.CuentaBancaria" placeholder="Número de cuenta" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Forma de Pago</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.FormaPago" placeholder="Ej: Transferencia, Tarjeta" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Límite de Crédito</label>
+                        <input type="number" step="0.01" class="form-control" @bind="clienteSeleccionado.LimiteCredito" placeholder="0.00" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Días de Pago</label>
+                        <input type="number" class="form-control" @bind="clienteSeleccionado.DiasPago" placeholder="30" />
+                        <small class="text-muted">Días de plazo de pago</small>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Persona de Contacto</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.Contacto" placeholder="Nombre del contacto principal" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Documentos -->
+            <div class="@(tabActiva == "documentos" ? "" : "d-none")">
+                @if (clienteSeleccionado.Id == 0)
+                {
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Primero guarda el cliente para poder gestionar documentos.
+                    </div>
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#documentoModal" @onclick="NuevoDocumento">
+                            <i class="bi bi-plus-circle"></i> Agregar Documento
+                        </button>
+                    </div>
+                    
+                    @if (documentos.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Nombre</th>
+                                        <th>Descripción</th>
+                                        <th>Fecha Subida</th>
+                                        <th>Vencimiento</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var doc in documentos)
+                                    {
+                                        <tr>
+                                            <td><span class="badge bg-secondary">@doc.TipoDocumento</span></td>
+                                            <td>@doc.NombreArchivo</td>
+                                            <td>@doc.Descripcion</td>
+                                            <td>@doc.FechaSubida.ToString("dd/MM/yyyy")</td>
+                                            <td>@(doc.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                            <td>
+                                                <a href="@doc.RutaArchivo" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarDocumento(doc.Id)" title="Eliminar">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-center text-muted py-4">No hay documentos registrados para este cliente</p>
+                    }
+                }
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para agregar documento -->
+<div class="modal fade" id="documentoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header text-white" style="background-color: #2196F3;">
+                <h5 class="modal-title">Agregar Documento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Documento *</label>
+                    <select class="form-select" @bind="nuevoDoc.TipoDocumento">
+                        <option value="Contrato">Contrato</option>
+                        <option value="Factura">Factura</option>
+                        <option value="DNI/NIF">DNI/NIF</option>
+                        <option value="Escrituras">Escrituras</option>
+                        <option value="Poder">Poder de Representación</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre del Archivo *</label>
+                    <input type="text" class="form-control" @bind="nuevoDoc.NombreArchivo" placeholder="Ej: Contrato_2025.pdf" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <textarea class="form-control" rows="2" @bind="nuevoDoc.Descripcion" placeholder="Descripción opcional del documento"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Archivo *</label>
+                    <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+                    <small class="text-muted">Selecciona un archivo PDF, Word o imagen</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Fecha de Vencimiento (opcional)</label>
+                    <input type="date" class="form-control" @bind="fechaVencimientoDoc" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarDocumento">
+                    <i class="bi bi-save me-1"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Cliente> clientes = new();
+    private Cliente clienteSeleccionado = new();
+    private List<Documento> documentos = new();
+    private Documento nuevoDoc = new();
+    private DateTime? fechaVencimientoDoc;
+    private IBrowserFile? archivoSeleccionado;
+    private string tabActiva = "datos";
+    private string busqueda = string.Empty;
+    private string filtroTipo = string.Empty;
+    private string filtroEstado = string.Empty;
+
+    private List<Cliente> ClientesFiltrados => clientes
+        .Where(c =>
+            (string.IsNullOrEmpty(busqueda) ||
+             c.Nombre.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ||
+             (c.NombreEmpresa?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+             c.NIF.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ||
+             c.Email.Contains(busqueda, StringComparison.OrdinalIgnoreCase)) &&
+            (string.IsNullOrEmpty(filtroTipo) || c.Tipo.ToString() == filtroTipo) &&
+            (string.IsNullOrEmpty(filtroEstado) || c.Activo.ToString() == filtroEstado))
+        .OrderByDescending(c => c.FechaRegistro)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarClientes();
+    }
+
+    private async Task CargarClientes()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        clientes = await context.Clientes.ToListAsync();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        clienteSeleccionado = new Cliente { Activo = true };
+        documentos = new();
+        tabActiva = "datos";
+    }
+
+    private async Task EditarCliente(Cliente cliente)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var clienteDb = await context.Clientes
+            .Include(c => c.Documentos)
+            .FirstOrDefaultAsync(c => c.Id == cliente.Id);
+            
+        if (clienteDb != null)
+        {
+            clienteSeleccionado = clienteDb;
+            documentos = clienteDb.Documentos.ToList();
+        }
+        tabActiva = "datos";
+    }
+
+    private async Task GuardarCliente()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (clienteSeleccionado.Id == 0)
+        {
+            clienteSeleccionado.FechaRegistro = DateTime.Now;
+            context.Clientes.Add(clienteSeleccionado);
+        }
+        else
+        {
+            context.Clientes.Update(clienteSeleccionado);
+        }
+        
+        await context.SaveChangesAsync();
+        await CargarClientes();
+
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('clienteModal')).hide()");
+        StateHasChanged();
+    }
+
+    private async Task EliminarCliente(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var cliente = await context.Clientes.FindAsync(id);
+        if (cliente != null)
+        {
+            context.Clientes.Remove(cliente);
+            await context.SaveChangesAsync();
+            await CargarClientes();
+            StateHasChanged();
+        }
+    }
+
+    private string ObtenerClaseTipo(TipoCliente tipo)
+    {
+        return tipo switch
+        {
+            TipoCliente.Particular => "bg-info",
+            TipoCliente.Empresa => "bg-primary",
+            TipoCliente.Agencia => "bg-warning",
+            _ => "bg-secondary"
+        };
+    }
+
+    private void CambiarTab(string tab)
+    {
+        tabActiva = tab;
+        StateHasChanged();
+    }
+
+    private void NuevoDocumento()
+    {
+        nuevoDoc = new Documento
+        {
+            TipoDocumento = "Contrato",
+            FechaSubida = DateTime.Now,
+            ClienteId = clienteSeleccionado.Id
+        };
+        fechaVencimientoDoc = null;
+        archivoSeleccionado = null;
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        archivoSeleccionado = e.File;
+        nuevoDoc.NombreArchivo = archivoSeleccionado.Name;
+    }
+
+    private async Task GuardarDocumento()
+    {
+        if (archivoSeleccionado == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debes seleccionar un archivo");
+            return;
+        }
+
+        var rutaDocumentos = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "documentos", "clientes");
+        Directory.CreateDirectory(rutaDocumentos);
+
+        var nombreArchivo = $"{clienteSeleccionado.Id}_{DateTime.Now:yyyyMMddHHmmss}_{archivoSeleccionado.Name}";
+        var rutaCompleta = Path.Combine(rutaDocumentos, nombreArchivo);
+
+        using (var stream = new FileStream(rutaCompleta, FileMode.Create))
+        {
+            await archivoSeleccionado.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(stream);
+        }
+
+        nuevoDoc.RutaArchivo = $"/documentos/clientes/{nombreArchivo}";
+        nuevoDoc.FechaVencimiento = fechaVencimientoDoc;
+        nuevoDoc.ClienteId = clienteSeleccionado.Id;
+        
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.Documentos.Add(nuevoDoc);
+        await context.SaveChangesAsync();
+        
+        documentos = await context.Documentos
+            .Where(d => d.ClienteId == clienteSeleccionado.Id)
+            .ToListAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('documentoModal')).hide()");
+        StateHasChanged();
+    }
+
+    private async Task EliminarDocumento(int documentoId)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de que deseas eliminar este documento?");
+        if (!confirmar) return;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        var documento = await context.Documentos.FindAsync(documentoId);
+        if (documento != null)
+        {
+            context.Documentos.Remove(documento);
+            await context.SaveChangesAsync();
+            
+            documentos = await context.Documentos
+                .Where(d => d.ClienteId == clienteSeleccionado.Id)
+                .ToListAsync();
+            
+            StateHasChanged();
+        }
+    }
+}

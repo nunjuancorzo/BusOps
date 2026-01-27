@@ -1,0 +1,151 @@
+@page "/reservas/nuevo"
+@page "/reservas/{Id:int}"
+@using BusOps.Models
+@using BusOps.Helpers
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>@(Id == 0 ? "Nueva Reserva" : "Editar Reserva") - BusOps</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@(Id == 0 ? "Nueva Reserva" : "Editar Reserva")</h1>
+    <button class="btn btn-outline-secondary" @onclick="Volver">
+        <i class="bi bi-arrow-left"></i> Volver
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Viaje *</label>
+                <select class="form-select" @bind="reserva.ViajeId">
+                    <option value="0">-- Seleccione un viaje --</option>
+                    @foreach (var viaje in viajes.Where(v => v.Estado == EstadoViaje.Programado && v.AsientosDisponibles > 0))
+                    {
+                        var ruta = rutas.FirstOrDefault(r => r.Id == viaje.RutaId);
+                        <option value="@viaje.Id">
+                            @ruta?.Nombre - @viaje.FechaHoraSalida.ToString("dd/MM/yyyy HH:mm") (@viaje.AsientosDisponibles asientos)
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Pasajero *</label>
+                <select class="form-select" @bind="reserva.PasajeroId">
+                    <option value="0">-- Seleccione un pasajero --</option>
+                    @foreach (var pasajero in pasajeros)
+                    {
+                        <option value="@pasajero.Id">@pasajero.Nombre @pasajero.Apellidos - @pasajero.DNI</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Número de Asiento *</label>
+                <input type="number" min="1" class="form-control" @bind="reserva.NumeroAsiento" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Precio (€) *</label>
+                <input type="number" step="0.01" class="form-control" @bind="reserva.PrecioPagado" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Tipo de Pago *</label>
+                <select class="form-select" @bind="reserva.TipoPago">
+                    @foreach (var tipo in Enum.GetValues<TipoPago>())
+                    {
+                        <option value="@tipo">@tipo.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Estado *</label>
+                <select class="form-select" @bind="reserva.Estado">
+                    @foreach (var estado in Enum.GetValues<EstadoReserva>())
+                    {
+                        <option value="@estado">@estado.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="Guardar">
+                <i class="bi bi-save"></i> Guardar
+            </button>
+            <button class="btn btn-secondary" @onclick="Volver">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Reserva reserva = new();
+    private List<Viaje> viajes = new();
+    private List<Ruta> rutas = new();
+    private List<Pasajero> pasajeros = new();
+
+    protected override void OnInitialized()
+    {
+        CargarDatos();
+        
+        if (Id > 0)
+        {
+            // TODO: Cargar desde base de datos
+            reserva = new Reserva
+            {
+                Id = Id,
+                ViajeId = 1,
+                PasajeroId = 1,
+                NumeroAsiento = 15,
+                PrecioPagado = 45.00m,
+                FechaReserva = DateTime.Now,
+                TipoPago = TipoPago.Efectivo,
+                Estado = EstadoReserva.Confirmada
+            };
+        }
+        else
+        {
+            reserva = new Reserva 
+            { 
+                FechaReserva = DateTime.Now, 
+                Estado = EstadoReserva.Pendiente,
+                TipoPago = TipoPago.Efectivo
+            };
+        }
+    }
+
+    private void CargarDatos()
+    {
+        // TODO: Cargar desde base de datos
+        rutas = new List<Ruta>
+        {
+            new Ruta { Id = 1, Nombre = "Madrid - Barcelona" }
+        };
+        viajes = new List<Viaje>
+        {
+            new Viaje { Id = 1, RutaId = 1, FechaHoraSalida = DateTime.Now.AddDays(1), AsientosDisponibles = 20, Estado = EstadoViaje.Programado }
+        };
+        pasajeros = new List<Pasajero>
+        {
+            new Pasajero { Id = 1, Nombre = "Juan", Apellidos = "Pérez", DNI = "12345678A" }
+        };
+    }
+
+    private void Guardar()
+    {
+        // TODO: Guardar en base de datos
+        NavigationManager.NavigateTo("/reservas");
+    }
+
+    private void Volver()
+    {
+        NavigationManager.NavigateTo("/reservas");
+    }
+}

@@ -1,0 +1,196 @@
+@page "/login"
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.AspNetCore.Components.Forms
+@using System.ComponentModel.DataAnnotations
+@using BusOps.Data
+@using BusOps.Models
+@using Microsoft.EntityFrameworkCore
+@inject ProtectedSessionStorage SessionStorage
+@inject ProtectedLocalStorage LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>BusOps - Login</PageTitle>
+
+<div class="d-flex justify-content-center align-items-center" style="min-height: 100vh; background-color: #ffffff;">
+    <div class="card shadow-lg" style="width: 400px; border-radius: 15px;">
+        <div class="card-body p-5">
+            <div class="text-center mb-4">
+                <div class="d-flex justify-content-center mb-3">
+                    <img src="/logo-busopsnew.jpg" alt="BusOps Logo" style="height: 120px; border-radius: 10px;" />
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>@errorMessage
+                </div>
+            }
+
+            <EditForm Model="@loginModel" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+                
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Usuario</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
+                        <InputText @bind-Value="loginModel.Username" class="form-control" placeholder="Ingrese su usuario" />
+                    </div>
+                    <ValidationMessage For="@(() => loginModel.Username)" />
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Contraseña</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+                        <InputText type="password" @bind-Value="loginModel.Password" class="form-control" placeholder="Ingrese su contraseña" />
+                    </div>
+                    <ValidationMessage For="@(() => loginModel.Password)" />
+                </div>
+
+                <div class="mb-3 form-check">
+                    <InputCheckbox id="rememberMe" class="form-check-input" @bind-Value="rememberMe" />
+                    <label class="form-check-label" for="rememberMe">
+                        Recordar mis datos
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold" disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>Iniciando sesión...</span>
+                    }
+                    else
+                    {
+                        <span>Iniciar Sesión</span>
+                    }
+                </button>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel loginModel = new();
+    private string errorMessage = string.Empty;
+    private bool isLoading = false;
+    private bool hasChecked = false;
+    private bool rememberMe = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !hasChecked)
+        {
+            hasChecked = true;
+            
+            try
+            {
+                // Cargar credenciales guardadas si existen
+                var savedUsername = await LocalStorage.GetAsync<string>("savedUsername");
+                var savedPassword = await LocalStorage.GetAsync<string>("savedPassword");
+                var savedRememberMe = await LocalStorage.GetAsync<bool>("rememberMe");
+
+                if (savedRememberMe.Success && savedRememberMe.Value)
+                {
+                    rememberMe = true;
+                    if (savedUsername.Success && !string.IsNullOrEmpty(savedUsername.Value))
+                    {
+                        loginModel.Username = savedUsername.Value;
+                    }
+                    if (savedPassword.Success && !string.IsNullOrEmpty(savedPassword.Value))
+                    {
+                        loginModel.Password = savedPassword.Value;
+                    }
+                    StateHasChanged();
+                }
+                
+                // Verificar si ya hay una sesión activa
+                var result = await SessionStorage.GetAsync<bool>("isAuthenticated");
+                if (result.Success && result.Value)
+                {
+                    NavigationManager.NavigateTo("/");
+                }
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                // Si hay un error criptográfico, limpiar el storage y continuar
+                try
+                {
+                    await LocalStorage.DeleteAsync("savedUsername");
+                    await LocalStorage.DeleteAsync("savedPassword");
+                    await LocalStorage.DeleteAsync("rememberMe");
+                    await SessionStorage.DeleteAsync("isAuthenticated");
+                }
+                catch { }
+            }
+            catch (Exception)
+            {
+                // Ignorar otros errores al cargar datos del storage
+            }
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        // Simular delay de autenticación
+        await Task.Delay(500);
+
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            var usuario = await context.Usuarios
+                .FirstOrDefaultAsync(u => u.Username == loginModel.Username && u.Password == loginModel.Password && u.Activo);
+
+            if (usuario != null)
+            {
+                // Guardar credenciales si se marcó "Recordar"
+                if (rememberMe)
+                {
+                    await LocalStorage.SetAsync("savedUsername", loginModel.Username);
+                    await LocalStorage.SetAsync("savedPassword", loginModel.Password);
+                    await LocalStorage.SetAsync("rememberMe", true);
+                }
+                else
+                {
+                    // Limpiar credenciales guardadas si no se marcó
+                    await LocalStorage.DeleteAsync("savedUsername");
+                    await LocalStorage.DeleteAsync("savedPassword");
+                    await LocalStorage.DeleteAsync("rememberMe");
+                }
+                
+                // Login exitoso
+                await SessionStorage.SetAsync("isAuthenticated", true);
+                await SessionStorage.SetAsync("username", usuario.Username);
+                await SessionStorage.SetAsync("userRole", usuario.Rol);
+                await SessionStorage.SetAsync("userId", usuario.Id);
+                NavigationManager.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                errorMessage = "Usuario o contraseña incorrectos, o usuario inactivo";
+                isLoading = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al iniciar sesión: {ex.Message}";
+            isLoading = false;
+        }
+    }
+
+    public class LoginModel
+    {
+        [Required(ErrorMessage = "El usuario es requerido")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "La contraseña es requerida")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,98 @@
+/* Estilos mínimos - los principales están inline en el componente */
+.navbar-toggler {
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.navbar-toggler:focus {
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
+}
+        display: flex;
+        align-items: center;
+        line-height: 3rem;
+        width: 100%;
+    }
+
+.nav-item ::deep a.active {
+    background-color: rgba(255,255,255,0.37);
+    color: white;
+}
+
+.nav-item ::deep .nav-link:hover {
+    background-color: rgba(255,255,255,0.1);
+    color: white;
+}
+
+/* Estilos mejorados para el menú */
+.nav-link {
+    font-size: 1.25rem !important;
+    font-weight: 700 !important;
+    padding: 0.75rem 1.25rem !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase !important;
+    transition: all 0.3s ease !important;
+}
+
+.nav-link:hover {
+    transform: translateY(-2px);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Dropdown styles for hover */
+.dropdown:hover .dropdown-menu {
+    display: block;
+}
+
+.dropdown-menu {
+    margin-top: 0;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    padding: 0.75rem 0;
+    min-width: 250px;
+}
+
+.dropdown-item {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 0.75rem 1.75rem;
+    color: #212529;
+    transition: all 0.3s ease;
+    border-left: 4px solid transparent;
+}
+
+.dropdown-item:hover {
+    background: linear-gradient(90deg, #343a40 0%, #495057 100%);
+    color: white;
+    padding-left: 2rem;
+    border-left: 4px solid #ffc107;
+    transform: translateX(5px);
+}
+
+.dropdown-item .bi {
+    font-size: 1.2rem;
+    margin-right: 0.5rem;
+}
+
+.nav-scrollable {
+    display: none;
+}
+
+.navbar-toggler:checked ~ .nav-scrollable {
+    display: block;
+}
+
+@media (min-width: 641px) {
+    .navbar-toggler {
+        display: none;
+    }
+
+    .nav-scrollable {
+        /* Never collapse the sidebar for wide screens */
+        display: block;
+
+        /* Allow sidebar to scroll for tall menus */
+        height: calc(100vh - 3.5rem);
+        overflow-y: auto;
+    }
+}

@@ -1,0 +1,130 @@
+@page "/gastos/nuevo"
+@page "/gastos/{Id:int}"
+@using BusOps.Models
+@using BusOps.Helpers
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>@(Id == 0 ? "Nuevo Gasto" : "Editar Gasto") - BusOps</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@(Id == 0 ? "Nuevo Gasto" : "Editar Gasto")</h1>
+    <button class="btn btn-outline-secondary" @onclick="Volver">
+        <i class="bi bi-arrow-left"></i> Volver
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Fecha *</label>
+                <input type="date" class="form-control" @bind="fecha" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Tipo de Gasto *</label>
+                <select class="form-select" @bind="gasto.Tipo">
+                    @foreach (var tipo in Enum.GetValues<TipoGasto>())
+                    {
+                        <option value="@tipo">@tipo.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Monto (€) *</label>
+                <input type="number" step="0.01" class="form-control" @bind="gasto.Monto" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Proveedor</label>
+                <input type="text" class="form-control" @bind="gasto.Proveedor" placeholder="Nombre del proveedor" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Número de Factura</label>
+                <input type="text" class="form-control" @bind="gasto.NumeroFactura" placeholder="N° de factura" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Autobús (opcional)</label>
+                <select class="form-select" @bind="gasto.AutobusId">
+                    <option value="">-- Sin asignar --</option>
+                    @foreach (var autobus in autobuses)
+                    {
+                        <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Descripción</label>
+                <textarea class="form-control" rows="3" @bind="gasto.Descripcion" placeholder="Detalles del gasto..."></textarea>
+            </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="Guardar">
+                <i class="bi bi-save"></i> Guardar
+            </button>
+            <button class="btn btn-secondary" @onclick="Volver">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Gasto gasto = new();
+    private DateTime fecha = DateTime.Now;
+    private List<Autobus> autobuses = new();
+
+    protected override void OnInitialized()
+    {
+        CargarDatos();
+        
+        if (Id > 0)
+        {
+            // TODO: Cargar desde base de datos
+            gasto = new Gasto
+            {
+                Id = Id,
+                Fecha = DateTime.Now.AddDays(-5),
+                Tipo = TipoGasto.Combustible,
+                Monto = 150.50m,
+                ProveedorId = null,
+                NumeroFactura = "FAC-001",
+                Descripcion = "Repostaje completo"
+            };
+            fecha = gasto.Fecha;
+        }
+        else
+        {
+            gasto = new Gasto { Tipo = TipoGasto.Combustible };
+        }
+    }
+
+    private void CargarDatos()
+    {
+        // TODO: Cargar desde base de datos
+        autobuses = new List<Autobus>
+        {
+            new Autobus { Id = 1, Matricula = "1234-ABC", Marca = "Mercedes", Modelo = "Tourismo" }
+        };
+    }
+
+    private void Guardar()
+    {
+        gasto.Fecha = fecha;
+        // TODO: Guardar en base de datos
+        NavigationManager.NavigateTo("/gastos");
+    }
+
+    private void Volver()
+    {
+        NavigationManager.NavigateTo("/gastos");
+    }
+}

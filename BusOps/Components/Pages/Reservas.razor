@@ -1,0 +1,397 @@
+@page "/reservas"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Reservas</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#reservaModal" @onclick="MostrarFormularioNuevo">
+        <span class="bi bi-plus-circle"></span> Nueva Reserva
+    </button>
+</div>
+
+<!-- Modal Reserva -->
+<div class="modal fade" id="reservaModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #2196F3;">
+                <h5 class="modal-title">@(reservaSeleccionada.Id > 0 ? "Editar Reserva" : "Nueva Reserva")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarReserva">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Viaje *</label>
+                        <select class="form-select" @bind="reservaSeleccionada!.ViajeId" @bind:after="ActualizarPrecioViaje">
+                            <option value="0">-- Seleccione un viaje --</option>
+                            @foreach (var viaje in viajes.Where(v => v.Estado == EstadoViaje.Programado && v.AsientosDisponibles > 0))
+                            {
+                                var ruta = rutas.FirstOrDefault(r => r.Id == viaje.RutaId);
+                                <option value="@viaje.Id">
+                                    @ruta?.Nombre - @viaje.FechaHoraSalida.ToString("dd/MM/yyyy HH:mm") (@viaje.AsientosDisponibles asientos)
+                                </option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Pasajero *</label>
+                        <select class="form-select" @bind="reservaSeleccionada!.PasajeroId">
+                            <option value="0">-- Seleccione un pasajero --</option>
+                            @foreach (var pasajero in pasajeros)
+                            {
+                                <option value="@pasajero.Id">@pasajero.Nombre @pasajero.Apellidos - @pasajero.DNI</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Número de Asiento *</label>
+                        <input type="number" min="1" class="form-control" @bind="reservaSeleccionada!.NumeroAsiento" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Precio (€) *</label>
+                        <input type="number" step="0.01" class="form-control" @bind="reservaSeleccionada!.PrecioPagado" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tipo de Pago *</label>
+                        <select class="form-select" @bind="reservaSeleccionada!.TipoPago">
+                            @foreach (var tipo in Enum.GetValues<TipoPago>())
+                            {
+                                <option value="@tipo">@tipo.GetDisplayName()</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Estado *</label>
+                        <select class="form-select" @bind="reservaSeleccionada!.Estado">
+                            @foreach (var estado in Enum.GetValues<EstadoReserva>())
+                            {
+                                <option value="@estado">@estado.GetDisplayName()</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Lista de Reservas</h5>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <div class="btn-group" role="group">
+                <button class="btn @(filtroEstado == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(null)">
+                    Todas
+                </button>
+                <button class="btn @(filtroEstado == EstadoReserva.Pendiente ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoReserva.Pendiente)">
+                    Pendientes
+                </button>
+                <button class="btn @(filtroEstado == EstadoReserva.Confirmada ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoReserva.Confirmada)">
+                    Confirmadas
+                </button>
+                <button class="btn @(filtroEstado == EstadoReserva.Pagada ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoReserva.Pagada)">
+                    Pagadas
+                </button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Pasajero</th>
+                        <th>Viaje</th>
+                        <th>Fecha Salida</th>
+                        <th>Asiento</th>
+                        <th>Precio</th>
+                        <th>Pago</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var reserva in ReservasFiltradas.OrderByDescending(r => r.FechaReserva))
+                    {
+                        var viaje = viajes.FirstOrDefault(v => v.Id == reserva.ViajeId);
+                        var ruta = rutas.FirstOrDefault(r => r.Id == viaje?.RutaId);
+                        var pasajero = pasajeros.FirstOrDefault(p => p.Id == reserva.PasajeroId);
+                        
+                        <tr>
+                            <td><strong>@reserva.CodigoReserva</strong></td>
+                            <td>
+                                @pasajero?.Nombre @pasajero?.Apellidos<br/>
+                                <small class="text-muted">@pasajero?.DNI</small>
+                            </td>
+                            <td>
+                                <strong>@ruta?.Nombre</strong><br/>
+                                <small class="text-muted">@ruta?.Origen → @ruta?.Destino</small>
+                            </td>
+                            <td>@viaje?.FechaHoraSalida.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    <span class="bi bi-person-fill"></span> @reserva.NumeroAsiento
+                                </span>
+                            </td>
+                            <td>@reserva.PrecioPagado.ToString("C2")</td>
+                            <td>
+                                <small>@reserva.TipoPago.GetDisplayName()</small>
+                            </td>
+                            <td>
+                                <span class="badge @ObtenerClaseEstado(reserva.Estado)">
+                                    @reserva.Estado.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>
+                                @if (reserva.Estado != EstadoReserva.Cancelada && reserva.Estado != EstadoReserva.Utilizada)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#reservaModal" @onclick="() => EditarReserva(reserva)" title="Editar">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger ms-1" @onclick="async () => await CancelarReserva(reserva)" title="Cancelar">
+                                        <i class="bi bi-trash-fill"></i>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-success" @onclick="async () => await ReactivarReserva(reserva)" title="Reactivar">
+                                        <i class="bi bi-arrow-clockwise"></i> Reactivar
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!ReservasFiltradas.Any())
+            {
+                <p class="text-center text-muted py-4">No hay reservas registradas</p>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Total Reservas</h5>
+                <h2 class="text-primary">@reservas.Count</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Pendientes</h5>
+                <h2 class="text-warning">@reservas.Count(r => r.Estado == EstadoReserva.Pendiente)</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Confirmadas</h5>
+                <h2 class="text-success">@reservas.Count(r => r.Estado == EstadoReserva.Pagada)</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Ingresos</h5>
+                <h2 class="text-success">@reservas.Where(r => r.Estado == EstadoReserva.Pagada).Sum(r => r.PrecioPagado).ToString("C2")</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Reserva> reservas = new();
+    private List<Viaje> viajes = new();
+    private List<Ruta> rutas = new();
+    private List<Pasajero> pasajeros = new();
+    private Reserva reservaSeleccionada = new();
+    private EstadoReserva? filtroEstado = null;
+
+    private IEnumerable<Reserva> ReservasFiltradas =>
+        filtroEstado == null ? reservas : reservas.Where(r => r.Estado == filtroEstado);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarReservas();
+        await CargarViajes();
+        await CargarRutas();
+        await CargarPasajeros();
+    }
+
+    private async Task CargarReservas()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        reservas = await context.Reservas
+            .Include(r => r.Viaje)
+            .Include(r => r.Pasajero)
+            .ToListAsync();
+    }
+
+    private async Task CargarViajes()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        viajes = await context.Viajes
+            .Include(v => v.Ruta)
+            .ToListAsync();
+    }
+
+    private async Task CargarRutas()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        rutas = await context.Rutas.ToListAsync();
+    }
+
+    private async Task CargarPasajeros()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        pasajeros = await context.Pasajeros.ToListAsync();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        reservaSeleccionada = new Reserva
+        {
+            Estado = EstadoReserva.Pendiente,
+            FechaReserva = DateTime.Now,
+            TipoPago = TipoPago.TarjetaCredito
+        };
+    }
+
+    private void ActualizarPrecioViaje()
+    {
+        if (reservaSeleccionada != null && reservaSeleccionada.ViajeId > 0)
+        {
+            var viaje = viajes.FirstOrDefault(v => v.Id == reservaSeleccionada.ViajeId);
+            if (viaje != null)
+            {
+                reservaSeleccionada.PrecioPagado = viaje.PrecioViaje;
+            }
+        }
+    }
+
+    private void EditarReserva(Reserva reserva)
+    {
+        reservaSeleccionada = new Reserva
+        {
+            Id = reserva.Id,
+            CodigoReserva = reserva.CodigoReserva,
+            ViajeId = reserva.ViajeId,
+            PasajeroId = reserva.PasajeroId,
+            FechaReserva = reserva.FechaReserva,
+            NumeroAsiento = reserva.NumeroAsiento,
+            PrecioPagado = reserva.PrecioPagado,
+            Estado = reserva.Estado,
+            TipoPago = reserva.TipoPago
+        };
+    }
+
+    private async Task GuardarReserva()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (reservaSeleccionada.Id == 0)
+        {
+            reservaSeleccionada.CodigoReserva = $"RES-{DateTime.Now.Year}-{(await context.Reservas.CountAsync() + 1):D3}";
+            reservaSeleccionada.FechaReserva = DateTime.Now;
+            context.Reservas.Add(reservaSeleccionada);
+            
+            // Actualizar asientos disponibles
+            var viaje = await context.Viajes.FindAsync(reservaSeleccionada.ViajeId);
+            if (viaje != null && viaje.AsientosDisponibles > 0)
+            {
+                viaje.AsientosDisponibles--;
+                context.Viajes.Update(viaje);
+            }
+        }
+        else
+        {
+            context.Reservas.Update(reservaSeleccionada);
+        }
+
+        await context.SaveChangesAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('reservaModal')).hide()");
+        
+        await CargarReservas();
+        await CargarViajes();
+        reservaSeleccionada = new();
+        StateHasChanged();
+    }
+
+    private async Task CancelarReserva(Reserva reserva)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        reserva.Estado = EstadoReserva.Cancelada;
+        context.Reservas.Update(reserva);
+        
+        // Liberar asiento
+        var viaje = await context.Viajes.FindAsync(reserva.ViajeId);
+        if (viaje != null)
+        {
+            viaje.AsientosDisponibles++;
+            context.Viajes.Update(viaje);
+        }
+        
+        await context.SaveChangesAsync();
+        await CargarReservas();
+        await CargarViajes();
+        StateHasChanged();
+    }
+
+    private async Task ReactivarReserva(Reserva reserva)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        reserva.Estado = EstadoReserva.Pendiente;
+        context.Reservas.Update(reserva);
+        
+        await context.SaveChangesAsync();
+        await CargarReservas();
+        StateHasChanged();
+    }
+
+    private void FiltrarPorEstado(EstadoReserva? estado)
+    {
+        filtroEstado = estado;
+    }
+
+    private string ObtenerClaseEstado(EstadoReserva estado)
+    {
+        return estado switch
+        {
+            EstadoReserva.Pendiente => "bg-warning",
+            EstadoReserva.Confirmada => "bg-info",
+            EstadoReserva.Pagada => "bg-success",
+            EstadoReserva.Cancelada => "bg-danger",
+            EstadoReserva.Utilizada => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+}

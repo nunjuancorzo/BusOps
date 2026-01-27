@@ -1,0 +1,422 @@
+@page "/viajes"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Viajes</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#viajeModal" @onclick="MostrarFormularioNuevo">
+        <span class="bi bi-plus-circle"></span> Nuevo Viaje
+    </button>
+</div>
+
+<!-- Modal Viaje -->
+<div class="modal fade" id="viajeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #2196F3;">
+                <h5 class="modal-title">@(viajeSeleccionado.Id > 0 ? "Editar Viaje" : "Nuevo Viaje")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarViaje">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Ruta *</label>
+                        <div class="input-group">
+                            <select class="form-select" @bind="viajeSeleccionado!.RutaId">
+                                <option value="0">-- Seleccione una ruta --</option>
+                                @foreach (var ruta in rutas.Where(r => r.Activa))
+                                {
+                                    <option value="@ruta.Id">@ruta.Nombre</option>
+                                }
+                            </select>
+                            <button class="btn btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#rutaModal" @onclick="MostrarFormularioNuevaRuta">
+                                <i class="bi bi-plus-circle"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Autobús *</label>
+                        <select class="form-select" @bind="viajeSeleccionado!.AutobusId" @bind:after="OnAutobusSeleccionado">
+                            <option value="0">-- Seleccione un autobús --</option>
+                            @foreach (var autobus in autobuses.Where(a => a.Estado == EstadoAutobus.Disponible))
+                            {
+                                <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Conductor *</label>
+                        <select class="form-select" @bind="viajeSeleccionado!.ConductorId">
+                            <option value="0">-- Seleccione un conductor --</option>
+                            @foreach (var conductor in conductores.Where(c => c.Estado == EstadoConductor.Activo))
+                            {
+                                <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Estado *</label>
+                        <select class="form-select" @bind="viajeSeleccionado!.Estado">
+                            @foreach (var estado in Enum.GetValues<EstadoViaje>())
+                            {
+                                <option value="@estado">@estado.GetDisplayName()</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Fecha y Hora de Salida *</label>
+                        <input type="datetime-local" class="form-control" @bind="fechaHoraSalida" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Fecha y Hora Llegada Estimada *</label>
+                        <input type="datetime-local" class="form-control" @bind="fechaHoraLlegadaEstimada" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Asientos Disponibles *</label>
+                        <input type="number" class="form-control" @bind="viajeSeleccionado!.AsientosDisponibles" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Precio del Viaje (€) *</label>
+                        <input type="number" step="0.01" class="form-control" @bind="viajeSeleccionado!.PrecioViaje" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Ruta -->
+<div class="modal fade" id="rutaModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Ruta</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre de la Ruta *</label>
+                    <input type="text" class="form-control" @bind="nuevaRuta.Nombre" placeholder="Ej: Madrid - Barcelona Express" />
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Origen *</label>
+                        <input type="text" class="form-control" @bind="nuevaRuta.Origen" placeholder="Ciudad origen" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Destino *</label>
+                        <input type="text" class="form-control" @bind="nuevaRuta.Destino" placeholder="Ciudad destino" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Distancia (km) *</label>
+                        <input type="number" step="0.1" class="form-control" @bind="nuevaRuta.DistanciaKm" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Duración (horas) *</label>
+                        <input type="number" step="0.5" class="form-control" @bind="duracionHoras" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Precio Base (€) *</label>
+                    <input type="number" step="0.01" class="form-control" @bind="nuevaRuta.PrecioBase" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" @onclick="GuardarNuevaRuta">
+                    <i class="bi bi-plus-circle"></i> Crear Ruta
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Lista de Viajes</h5>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <div class="btn-group" role="group">
+                <button class="btn @(filtroEstado == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(null)">
+                    Todos
+                </button>
+                <button class="btn @(filtroEstado == EstadoViaje.Programado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Programado)">
+                    Programados
+                </button>
+                <button class="btn @(filtroEstado == EstadoViaje.EnCurso ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.EnCurso)">
+                    En Curso
+                </button>
+                <button class="btn @(filtroEstado == EstadoViaje.Completado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Completado)">
+                    Completados
+                </button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Ruta</th>
+                        <th>Autobús</th>
+                        <th>Conductor</th>
+                        <th>Salida</th>
+                        <th>Llegada</th>
+                        <th>Asientos</th>
+                        <th>Precio</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var viaje in ViajesFiltrados)
+                    {
+                        var ruta = rutas.FirstOrDefault(r => r.Id == viaje.RutaId);
+                        var autobus = autobuses.FirstOrDefault(a => a.Id == viaje.AutobusId);
+                        var conductor = conductores.FirstOrDefault(c => c.Id == viaje.ConductorId);
+                        
+                        <tr>
+                            <td>
+                                <strong>@ruta?.Nombre</strong><br/>
+                                <small class="text-muted">@ruta?.Origen → @ruta?.Destino</small>
+                            </td>
+                            <td>@autobus?.Matricula</td>
+                            <td>@conductor?.Nombre @conductor?.Apellidos</td>
+                            <td>@viaje.FechaHoraSalida.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@viaje.FechaHoraLlegadaEstimada.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>
+                                <span class="badge @ObtenerClaseAsientos(viaje.AsientosDisponibles)">
+                                    @viaje.AsientosDisponibles
+                                </span>
+                            </td>
+                            <td>@viaje.PrecioViaje.ToString("C2")</td>
+                            <td>
+                                <span class="badge @ObtenerClaseEstado(viaje.Estado)">
+                                    @viaje.Estado.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#viajeModal" @onclick="() => EditarViaje(viaje)" title="Editar">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarViaje(viaje.Id)" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!ViajesFiltrados.Any())
+            {
+                <p class="text-center text-muted py-4">No hay viajes registrados</p>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Viaje> viajes = new();
+    private List<Ruta> rutas = new();
+    private List<Autobus> autobuses = new();
+    private List<Conductor> conductores = new();
+    private Viaje viajeSeleccionado = new();
+    private Ruta nuevaRuta = new();
+    private double duracionHoras = 8;
+    private DateTime fechaHoraSalida = DateTime.Now.AddDays(1).Date.AddHours(8);
+    private DateTime fechaHoraLlegadaEstimada = DateTime.Now.AddDays(1).Date.AddHours(16);
+    private EstadoViaje? filtroEstado = null;
+
+    private IEnumerable<Viaje> ViajesFiltrados =>
+        filtroEstado == null ? viajes : viajes.Where(v => v.Estado == filtroEstado);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarViajes();
+        await CargarRutas();
+        await CargarAutobuses();
+        await CargarConductores();
+    }
+
+    private async Task CargarViajes()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        viajes = await context.Viajes
+            .Include(v => v.Ruta)
+            .Include(v => v.Autobus)
+            .Include(v => v.Conductor)
+            .ToListAsync();
+    }
+
+    private async Task CargarRutas()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        rutas = await context.Rutas.Where(r => r.Activa).ToListAsync();
+    }
+
+    private async Task CargarAutobuses()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        autobuses = await context.Autobuses.ToListAsync();
+    }
+
+    private async Task CargarConductores()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        conductores = await context.Conductores.ToListAsync();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        viajeSeleccionado = new Viaje
+        {
+            Estado = EstadoViaje.Programado,
+            AsientosDisponibles = 50
+        };
+        fechaHoraSalida = DateTime.Now.AddDays(1).Date.AddHours(8);
+        fechaHoraLlegadaEstimada = DateTime.Now.AddDays(1).Date.AddHours(16);
+    }
+
+    private void EditarViaje(Viaje viaje)
+    {
+        viajeSeleccionado = new Viaje
+        {
+            Id = viaje.Id,
+            RutaId = viaje.RutaId,
+            AutobusId = viaje.AutobusId,
+            ConductorId = viaje.ConductorId,
+            FechaHoraSalida = viaje.FechaHoraSalida,
+            FechaHoraLlegadaEstimada = viaje.FechaHoraLlegadaEstimada,
+            FechaHoraLlegadaReal = viaje.FechaHoraLlegadaReal,
+            AsientosDisponibles = viaje.AsientosDisponibles,
+            PrecioViaje = viaje.PrecioViaje,
+            Estado = viaje.Estado
+        };
+        fechaHoraSalida = viaje.FechaHoraSalida;
+        fechaHoraLlegadaEstimada = viaje.FechaHoraLlegadaEstimada;
+    }
+
+    private void OnAutobusSeleccionado()
+    {
+        if (viajeSeleccionado.AutobusId > 0)
+        {
+            // Buscar si el autobús tiene un conductor asignado
+            var conductorAsignado = conductores.FirstOrDefault(c => c.AutobusId == viajeSeleccionado.AutobusId && c.Estado == EstadoConductor.Activo);
+            
+            if (conductorAsignado != null)
+            {
+                viajeSeleccionado.ConductorId = conductorAsignado.Id;
+            }
+        }
+    }
+
+    private async Task GuardarViaje()
+    {
+        viajeSeleccionado.FechaHoraSalida = fechaHoraSalida;
+        viajeSeleccionado.FechaHoraLlegadaEstimada = fechaHoraLlegadaEstimada;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (viajeSeleccionado.Id == 0)
+        {
+            context.Viajes.Add(viajeSeleccionado);
+        }
+        else
+        {
+            context.Viajes.Update(viajeSeleccionado);
+        }
+        
+        await context.SaveChangesAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('viajeModal')).hide()");
+        
+        await CargarViajes();
+        viajeSeleccionado = new();
+        StateHasChanged();
+    }
+
+    private async Task EliminarViaje(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var viaje = await context.Viajes.FindAsync(id);
+        if (viaje != null)
+        {
+            context.Viajes.Remove(viaje);
+            await context.SaveChangesAsync();
+            await CargarViajes();
+        }
+    }
+
+    private void MostrarFormularioNuevaRuta()
+    {
+        nuevaRuta = new Ruta
+        {
+            Activa = true
+        };
+        duracionHoras = 8;
+    }
+
+    private async Task GuardarNuevaRuta()
+    {
+        // Convertir duración de horas a TimeSpan
+        nuevaRuta.DuracionEstimada = TimeSpan.FromHours(duracionHoras);
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.Rutas.Add(nuevaRuta);
+        await context.SaveChangesAsync();
+        
+        // Recargar rutas y seleccionar la nueva
+        await CargarRutas();
+        viajeSeleccionado.RutaId = nuevaRuta.Id;
+
+        // Cerrar modal de ruta
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('rutaModal')).hide()");
+    }
+
+    private void FiltrarPorEstado(EstadoViaje? estado)
+    {
+        filtroEstado = estado;
+    }
+
+    private string ObtenerClaseEstado(EstadoViaje estado)
+    {
+        return estado switch
+        {
+            EstadoViaje.Programado => "bg-info",
+            EstadoViaje.EnCurso => "bg-primary",
+            EstadoViaje.Completado => "bg-success",
+            EstadoViaje.Cancelado => "bg-danger",
+            EstadoViaje.Retrasado => "bg-warning",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string ObtenerClaseAsientos(int asientos)
+    {
+        if (asientos == 0) return "bg-danger";
+        if (asientos < 10) return "bg-warning";
+        return "bg-success";
+    }
+}

@@ -1,0 +1,702 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@using BusOps.Helpers
+@implements IDisposable
+@inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>BusOps - Gestión</PageTitle>
+
+@code {
+    private bool isChecking = true;
+    private bool datosInicializados = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var result = await SessionStorage.GetAsync<bool>("isAuthenticated");
+            if (!result.Success || !result.Value)
+            {
+                NavigationManager.NavigateTo("/login", forceLoad: true);
+            }
+            else
+            {
+                await CargarDatosDesdeBaseDatos();
+                isChecking = false;
+                datosInicializados = true;
+                StateHasChanged();
+            }
+        }
+        else if (datosInicializados && proximosViajes.Any())
+        {
+            // Inicializar mapa después del segundo render cuando los datos ya están cargados
+            await InicializarMapa();
+        }
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (datosInicializados && (e.Location.EndsWith("/") || e.Location.Contains("localhost:5277/#")))
+        {
+            await CargarDatosDesdeBaseDatos();
+            await InvokeAsync(StateHasChanged);
+            await InicializarMapa();
+        }
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}
+
+@if (!isChecking)
+{
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card" style="background: linear-gradient(135deg, #a8d5e2, #d4ebf2); border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title" style="color: #5a7c8a;">Autobuses</h6>
+                        <h2 class="mb-0" style="color: #2d4a56;">@autobuses.Count</h2>
+                        <small style="color: #5a7c8a;">@autobuses.Count(a => a.Estado == EstadoAutobus.Disponible) disponibles</small>
+                    </div>
+                    <div>
+                        <span class="bi bi-bus-front" style="font-size: 3rem; opacity: 0.15; color: #5a7c8a;"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer" style="background-color: rgba(90,124,138,0.1); border-top: 1px solid rgba(90,124,138,0.2);">
+                <small style="color: #5a7c8a;">@autobuses.Count(a => a.Estado == EstadoAutobus.EnMantenimiento) en mantenimiento</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card" style="background: linear-gradient(135deg, #b5e7d3, #d9f2e8); border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title" style="color: #5a8c72;">Conductores</h6>
+                        <h2 class="mb-0" style="color: #2d5646;">@conductores.Count</h2>
+                        <small style="color: #5a8c72;">@conductores.Count(c => c.Estado == EstadoConductor.Activo) activos</small>
+                    </div>
+                    <div>
+                        <span class="bi bi-person-badge" style="font-size: 3rem; opacity: 0.15; color: #5a8c72;"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer" style="background-color: rgba(90,140,114,0.1); border-top: 1px solid rgba(90,140,114,0.2);">
+                <small style="color: #5a8c72;">@conductores.Count(c => c.Estado == EstadoConductor.DeVacaciones) de vacaciones</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card" style="background: linear-gradient(135deg, #ffcab1, #ffe4d6); border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title" style="color: #a66e4e;">Viajes Hoy</h6>
+                        <h2 class="mb-0" style="color: #6b4732;">@viajesHoy.Count()</h2>
+                        <small style="color: #a66e4e;">@viajesHoy.Count(v => v.Estado == EstadoViaje.EnCurso) en curso</small>
+                    </div>
+                    <div>
+                        <span class="bi bi-calendar-check" style="font-size: 3rem; opacity: 0.15; color: #a66e4e;"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer" style="background-color: rgba(166,110,78,0.1); border-top: 1px solid rgba(166,110,78,0.2);">
+                <small style="color: #a66e4e;">@viajesHoy.Count(v => v.Estado == EstadoViaje.Programado) programados</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card" style="background: linear-gradient(135deg, #d5c6e8, #ebe3f5); border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title" style="color: #8470a3;">Reservas Activas</h6>
+                        <h2 class="mb-0" style="color: #564768;">@reservasActivas.Count()</h2>
+                        <small style="color: #8470a3;">@reservasActivas.Count(r => r.Estado == EstadoReserva.Pagada) pagadas</small>
+                    </div>
+                    <div>
+                        <span class="bi bi-ticket-perforated" style="font-size: 3rem; opacity: 0.15; color: #8470a3;"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer" style="background-color: rgba(132,112,163,0.1); border-top: 1px solid rgba(132,112,163,0.2);">
+                <small style="color: #8470a3;">@reservasActivas.Count(r => r.Estado == EstadoReserva.Pendiente) pendientes</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #e8dff5, #f3ebf9); border: none;">
+                <h5 class="mb-0" style="color: #6d4d80;"><span class="bi bi-geo-alt"></span> Mapa de Rutas - Próximos Viajes</h5>
+            </div>
+            <div class="card-body">
+                <div id="map" style="height: 500px; width: 100%; border-radius: 8px;"></div>
+                
+                @if (proximosViajes.Any())
+                {
+                    <div class="mt-3">
+                        <h6 class="text-muted mb-2">Leyenda de Rutas:</h6>
+                        <div class="row g-2">
+                            @foreach (var viaje in proximosViajes.Take(5))
+                            {
+                                <div class="col-md-6">
+                                    <div class="d-flex align-items-center">
+                                        <div style="width: 20px; height: 3px; background-color: @ObtenerColorRuta(viaje.Id); margin-right: 8px;"></div>
+                                        <small>
+                                            <strong>@viaje.Ruta?.Nombre</strong>: @viaje.Ruta?.Origen → @viaje.Ruta?.Destino
+                                            <span class="badge @ObtenerClaseEstadoViaje(viaje.Estado) ms-1" style="font-size: 0.7rem;">
+                                                @viaje.FechaHoraSalida.ToString("dd/MM HH:mm")
+                                            </span>
+                                        </small>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-5 text-muted">
+                        <span class="bi bi-map" style="font-size: 3rem; opacity: 0.3;"></span>
+                        <p class="mt-3"><em>No hay viajes programados para mostrar en el mapa</em></p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3" style="border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="card-header" style="background: linear-gradient(135deg, #b8e6d5, #cff0e4); border: none;">
+                <h5 class="mb-0" style="color: #3d7a5e;">Ingresos del Mes</h5>
+            </div>
+            <div class="card-body text-center">
+                <h1 class="display-4" style="color: #3d7a5e;">@ingresosMes.ToString("C0")</h1>
+                <p class="text-muted mb-0">@reservasPagadas.Count() reservas + @facturasPagadas.Count() facturas</p>
+            </div>
+        </div>
+
+        <div class="card" style="border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="card-header" style="background: linear-gradient(135deg, #f5c6cb, #fce4e6); border: none;">
+                <h5 class="mb-0" style="color: #a8515a;">Gastos del Mes</h5>
+            </div>
+            <div class="card-body text-center">
+                <h1 class="display-4" style="color: #a8515a;">@gastosMes.ToString("C0")</h1>
+                <p class="text-muted mb-0">@gastosDelMes.Count() gastos registrados</p>
+            </div>
+        </div>
+
+        <div class="card mt-3" style="border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div class="card-header" style="background: linear-gradient(135deg, #c8e6c9, #e0f2e1); border: none;">
+                <h5 class="mb-0" style="color: #4d7a4e;">Presupuestos del Mes</h5>
+            </div>
+            <div class="card-body text-center">
+                <h1 class="display-4" style="color: #4d7a4e;">@presupuestosMes.ToString("C0")</h1>
+                <p class="text-muted mb-0">@presupuestosDelMes.Count() presupuestos (@presupuestosAceptados.Count() aceptados)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #e8dff5, #f3ebf9); border: none;">
+                <h5 class="mb-0" style="color: #6d4d80;">Estado de la Flota</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Disponibles</span>
+                        <strong>@autobuses.Count(a => a.Estado == EstadoAutobus.Disponible)</strong>
+                    </div>
+                    <div class="progress mb-3" style="background-color: #e8f5e9;">
+                        <div class="progress-bar" style="background-color: #81c784; width: @(autobuses.Count > 0 ? (autobuses.Count(a => a.Estado == EstadoAutobus.Disponible) * 100.0 / autobuses.Count) : 0)%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>En Servicio</span>
+                        <strong>@autobuses.Count(a => a.Estado == EstadoAutobus.EnServicio)</strong>
+                    </div>
+                    <div class="progress mb-3" style="background-color: #e3f2fd;">
+                        <div class="progress-bar" style="background-color: #64b5f6; width: @(autobuses.Count > 0 ? (autobuses.Count(a => a.Estado == EstadoAutobus.EnServicio) * 100.0 / autobuses.Count) : 0)%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>En Mantenimiento</span>
+                        <strong>@autobuses.Count(a => a.Estado == EstadoAutobus.EnMantenimiento)</strong>
+                    </div>
+                    <div class="progress" style="background-color: #fff8e1;">
+                        <div class="progress-bar" style="background-color: #ffb74d; width: @(autobuses.Count > 0 ? (autobuses.Count(a => a.Estado == EstadoAutobus.EnMantenimiento) * 100.0 / autobuses.Count) : 0)%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #e8dff5, #f3ebf9); border: none;">
+                <h5 class="mb-0" style="color: #6d4d80;">Alertas y Notificaciones</h5>
+            </div>
+            <div class="card-body">
+                @if (licenciasPorVencer.Any())
+                {
+                    <div class="alert" style="background-color: #fff4e6; border: 1px solid #ffd699; border-left: 4px solid #ffb347; color: #8c5e28;">
+                        <strong><span class="bi bi-exclamation-triangle"></span> Licencias por vencer</strong>
+                        <ul class="mb-0 mt-2">
+                            @foreach (var conductor in licenciasPorVencer)
+                            {
+                                <li>@conductor.Nombre @conductor.Apellidos - @conductor.FechaVencimientoLicencia.ToString("dd/MM/yyyy")</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                @if (revisionesPendientes.Any())
+                {
+                    <div class="alert" style="background-color: #e8f4f8; border: 1px solid #b3dae8; border-left: 4px solid #7db8d1; color: #4a7389;">
+                        <strong><span class="bi bi-wrench"></span> Revisiones próximas</strong>
+                        <ul class="mb-0 mt-2">
+                            @foreach (var autobus in revisionesPendientes)
+                            {
+                                <li>@autobus.Matricula - @autobus.ProximaRevision?.ToString("dd/MM/yyyy")</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                @if (mantenimientosEnProceso.Any())
+                {
+                    <div class="alert" style="background-color: #f3ebf7; border: 1px solid #d6c2e3; border-left: 4px solid #b599cc; color: #6d4d80;">
+                        <strong><span class="bi bi-gear"></span> Mantenimientos en proceso</strong>
+                        <p class="mb-0 mt-2">@mantenimientosEnProceso.Count() autobuses en taller</p>
+                    </div>
+                }
+
+                @if (!licenciasPorVencer.Any() && !revisionesPendientes.Any() && !mantenimientosEnProceso.Any())
+                {
+                    <div class="alert" style="background-color: #e8f5e9; border: 1px solid #c8e6c9; border-left: 4px solid #81c784; color: #4d7a4e;">
+                        <span class="bi bi-check-circle"></span> No hay alertas pendientes
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #e8dff5, #f3ebf9); border: none;">
+                <h5 class="mb-0" style="color: #6d4d80;"><span class="bi bi-calendar-check"></span> Próximos Viajes</h5>
+            </div>
+            <div class="card-body">
+                @if (proximosViajes.Any())
+                {
+                    <div class="row">
+                        @foreach (var viaje in proximosViajes.Take(6))
+                        {
+                            var diasHasta = (viaje.FechaHoraSalida - DateTime.Now).Days;
+                            var horasHasta = (viaje.FechaHoraSalida - DateTime.Now).Hours;
+                            
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100" style="border-left: 4px solid #6d4d80; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <div>
+                                                <h6 class="card-title mb-1" style="color: #6d4d80;">
+                                                    <span class="bi bi-geo-alt-fill"></span> @viaje.Ruta?.Nombre
+                                                </h6>
+                                                <div class="mb-2">
+                                                    <span class="badge bg-light text-dark border">
+                                                        <span class="bi bi-pin-fill text-success"></span> @viaje.Ruta?.Origen
+                                                    </span>
+                                                    <span class="bi bi-arrow-right mx-1"></span>
+                                                    <span class="badge bg-light text-dark border">
+                                                        <span class="bi bi-pin-fill text-danger"></span> @viaje.Ruta?.Destino
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <span class="badge @ObtenerClaseEstadoViaje(viaje.Estado)">
+                                                @viaje.Estado.GetDisplayName()
+                                            </span>
+                                        </div>
+                                        
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">
+                                                    <span class="bi bi-calendar3"></span> 
+                                                    @viaje.FechaHoraSalida.ToString("dd/MM/yyyy")
+                                                </small>
+                                                <small class="text-muted d-block">
+                                                    <span class="bi bi-clock"></span> 
+                                                    @viaje.FechaHoraSalida.ToString("HH:mm")
+                                                </small>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">
+                                                    <span class="bi bi-bus-front"></span> 
+                                                    @viaje.Autobus?.Matricula
+                                                </small>
+                                                <small class="text-muted d-block">
+                                                    <span class="bi bi-person-badge"></span> 
+                                                    @viaje.Conductor?.Nombre
+                                                </small>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <small class="text-muted">Distancia:</small>
+                                                <strong class="ms-1">@viaje.Ruta?.DistanciaKm km</strong>
+                                            </div>
+                                            <div>
+                                                <small class="text-muted">Asientos:</small>
+                                                <span class="badge @(viaje.AsientosDisponibles < 10 ? "bg-warning" : "bg-success") ms-1">
+                                                    @viaje.AsientosDisponibles disponibles
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        @if (diasHasta == 0 && horasHasta >= 0)
+                                        {
+                                            <div class="mt-2">
+                                                <small class="badge bg-danger">
+                                                    <span class="bi bi-exclamation-circle"></span> Sale hoy en @horasHasta horas
+                                                </small>
+                                            </div>
+                                        }
+                                        else if (diasHasta > 0 && diasHasta <= 3)
+                                        {
+                                            <div class="mt-2">
+                                                <small class="badge bg-warning text-dark">
+                                                    <span class="bi bi-clock-history"></span> Sale en @diasHasta días
+                                                </small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    
+                    @if (proximosViajes.Count() > 6)
+                    {
+                        <div class="text-center mt-3">
+                            <a href="/viajes" class="btn btn-sm btn-outline-secondary">
+                                <span class="bi bi-list-ul"></span> Ver todos los viajes (@proximosViajes.Count())
+                            </a>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center py-5 text-muted">
+                        <span class="bi bi-map" style="font-size: 3rem; opacity: 0.3;"></span>
+                        <p class="mt-3"><em>No hay viajes programados próximamente</em></p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Autobus> autobuses = new();
+    private List<Conductor> conductores = new();
+    private List<Viaje> viajes = new();
+    private List<Ruta> rutas = new();
+    private List<Reserva> reservas = new();
+    private List<Factura> facturas = new();
+    private List<Gasto> gastos = new();
+    private List<MantenimientoAutobus> mantenimientos = new();
+    private List<Parada> paradas = new();
+    private List<Presupuesto> presupuestos = new();
+
+    private IEnumerable<Viaje> viajesHoy => viajes.Where(v => v.FechaHoraSalida.Date == DateTime.Now.Date);
+    private IEnumerable<Viaje> proximosViajes => viajes.Where(v => v.FechaHoraSalida >= DateTime.Now).OrderBy(v => v.FechaHoraSalida);
+    private IEnumerable<Reserva> reservasActivas => reservas.Where(r => r.Estado != EstadoReserva.Cancelada && r.Estado != EstadoReserva.Utilizada);
+    private IEnumerable<Reserva> reservasPagadas => reservas.Where(r => r.Estado == EstadoReserva.Pagada && r.FechaReserva.Month == DateTime.Now.Month && r.FechaReserva.Year == DateTime.Now.Year);
+    private IEnumerable<Factura> facturasPagadas => facturas.Where(f => f.Estado == EstadoFactura.Pagada && f.FechaPago != null && f.FechaPago.Value.Month == DateTime.Now.Month && f.FechaPago.Value.Year == DateTime.Now.Year);
+    private IEnumerable<Gasto> gastosDelMes => gastos.Where(g => g.Fecha.Month == DateTime.Now.Month && g.Fecha.Year == DateTime.Now.Year);
+    private IEnumerable<Presupuesto> presupuestosDelMes => presupuestos.Where(p => p.FechaEmision.Month == DateTime.Now.Month && p.FechaEmision.Year == DateTime.Now.Year);
+    private IEnumerable<Presupuesto> presupuestosAceptados => presupuestosDelMes.Where(p => p.Estado == EstadoPresupuesto.Aceptado || p.Estado == EstadoPresupuesto.Facturado);
+    private IEnumerable<Conductor> licenciasPorVencer => conductores.Where(c => c.FechaVencimientoLicencia <= DateTime.Now.AddMonths(3) && c.FechaVencimientoLicencia >= DateTime.Now);
+    private IEnumerable<Autobus> revisionesPendientes => autobuses.Where(a => a.ProximaRevision != null && a.ProximaRevision <= DateTime.Now.AddMonths(1) && a.ProximaRevision >= DateTime.Now);
+    private IEnumerable<MantenimientoAutobus> mantenimientosEnProceso => mantenimientos.Where(m => m.Estado == EstadoMantenimiento.EnProceso);
+    private IEnumerable<Ruta> rutasPopulares => rutas.OrderByDescending(r => viajes.Count(v => v.RutaId == r.Id));
+
+    private decimal ingresosMes => (reservasPagadas.Any() ? reservasPagadas.Sum(r => r.PrecioPagado) : 0m) + (facturasPagadas.Any() ? facturasPagadas.Sum(f => f.Total) : 0m);
+    private decimal gastosMes => gastosDelMes.Any() ? gastosDelMes.Sum(g => g.Monto) : 0m;
+    private decimal presupuestosMes => presupuestosDelMes.Any() ? presupuestosDelMes.Sum(p => p.Total) : 0m;
+
+    private async Task CargarDatosDesdeBaseDatos()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar datos reales desde la base de datos con relaciones incluidas
+        autobuses = await context.Autobuses.ToListAsync();
+        conductores = await context.Conductores.ToListAsync();
+        viajes = await context.Viajes
+            .Include(v => v.Ruta)
+            .Include(v => v.Autobus)
+            .Include(v => v.Conductor)
+            .ToListAsync();
+        rutas = await context.Rutas.ToListAsync();
+        paradas = await context.Paradas.ToListAsync();
+        reservas = await context.Reservas.ToListAsync();
+        facturas = await context.Facturas.ToListAsync();
+        gastos = await context.Gastos.ToListAsync();
+        mantenimientos = await context.MantenimientosAutobus.ToListAsync();
+        presupuestos = await context.Presupuestos.ToListAsync();
+        
+        // Debug: log de datos cargados
+        Console.WriteLine($"Dashboard - Autobuses cargados: {autobuses.Count}");
+        Console.WriteLine($"Dashboard - Viajes cargados: {viajes.Count}");
+        Console.WriteLine($"Dashboard - Conductores cargados: {conductores.Count}");
+        Console.WriteLine($"Dashboard - Reservas cargadas: {reservas.Count}");
+        Console.WriteLine($"Dashboard - Facturas cargadas: {facturas.Count}");
+        Console.WriteLine($"Dashboard - Presupuestos cargados: {presupuestos.Count}");
+    }
+    
+    private async Task InicializarMapa()
+    {
+        try
+        {
+            var viajesParaMapa = proximosViajes.Take(5).Select(v => new
+            {
+                id = v.Id,
+                nombre = v.Ruta?.Nombre ?? "",
+                origen = v.Ruta?.Origen ?? "",
+                destino = v.Ruta?.Destino ?? "",
+                color = ObtenerColorRuta(v.Id),
+                fecha = v.FechaHoraSalida.ToString("dd/MM HH:mm"),
+                rutaId = v.RutaId,
+                paradas = paradas
+                    .Where(p => p.RutaId == v.RutaId)
+                    .OrderBy(p => p.Orden)
+                    .Select(p => new
+                    {
+                        id = p.Id,
+                        nombre = p.Nombre,
+                        direccion = p.Direccion,
+                        ciudad = p.Ciudad,
+                        latitud = p.Latitud,
+                        longitud = p.Longitud,
+                        orden = p.Orden,
+                        tiempoDesdeInicio = p.TiempoDesdeInicio.ToString(@"hh\:mm")
+                    })
+                    .ToList()
+            }).ToList();
+
+            await JSRuntime.InvokeVoidAsync("inicializarMapaRutas", viajesParaMapa);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al inicializar mapa: {ex.Message}");
+        }
+    }
+    
+    private string ObtenerColorRuta(int viajeId)
+    {
+        var colores = new[] { "#3498db", "#e74c3c", "#2ecc71", "#f39c12", "#9b59b6" };
+        return colores[viajeId % colores.Length];
+    }
+    
+    private string ObtenerClaseEstadoViaje(EstadoViaje estado)
+    {
+        return estado switch
+        {
+            EstadoViaje.Programado => "bg-info",
+            EstadoViaje.EnCurso => "bg-primary",
+            EstadoViaje.Completado => "bg-success",
+            EstadoViaje.Cancelado => "bg-danger",
+            EstadoViaje.Retrasado => "bg-warning",
+            _ => "bg-secondary"
+        };
+    }
+}
+}
+
+<script>
+    let mapaRutas = null;
+
+    // Coordenadas aproximadas de ciudades españolas principales
+    const ciudadesEspana = {
+        'Madrid': [40.4168, -3.7038],
+        'Barcelona': [41.3874, 2.1686],
+        'Valencia': [39.4699, -0.3763],
+        'Sevilla': [37.3891, -5.9845],
+        'Zaragoza': [41.6488, -0.8891],
+        'Málaga': [36.7213, -4.4214],
+        'Murcia': [37.9922, -1.1307],
+        'Bilbao': [43.2630, -2.9350],
+        'Alicante': [38.3452, -0.4810],
+        'Córdoba': [37.8882, -4.7794],
+        'Valladolid': [41.6521, -4.7246],
+        'Granada': [37.1773, -3.5986],
+        'Santander': [43.4623, -3.8100],
+        'Toledo': [39.8628, -4.0273],
+        'Pamplona': [42.8125, -1.6458],
+        'San Sebastián': [43.3183, -1.9812],
+        'Santiago': [42.8782, -8.5448],
+        'Salamanca': [40.9701, -5.6635],
+        'Cáceres': [39.4753, -6.3724],
+        'Badajoz': [38.8794, -6.9707]
+    };
+
+    window.inicializarMapaRutas = function (viajes) {
+        // Destruir mapa existente si lo hay
+        if (mapaRutas) {
+            mapaRutas.remove();
+        }
+
+        // Crear nuevo mapa centrado en España
+        mapaRutas = L.map('map').setView([40.4168, -3.7038], 6);
+
+        // Añadir capa de mapa
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(mapaRutas);
+
+        if (!viajes || viajes.length === 0) {
+            return;
+        }
+
+        // Añadir rutas al mapa
+        viajes.forEach(viaje => {
+            const coordsOrigen = obtenerCoordenadas(viaje.origen);
+            const coordsDestino = obtenerCoordenadas(viaje.destino);
+
+            if (coordsOrigen && coordsDestino) {
+                // Si hay paradas, crear línea que pase por todas ellas
+                let puntosRuta = [coordsOrigen];
+                
+                if (viaje.paradas && viaje.paradas.length > 0) {
+                    // Agregar las coordenadas de cada parada
+                    viaje.paradas.forEach(parada => {
+                        if (parada.latitud && parada.longitud) {
+                            puntosRuta.push([parada.latitud, parada.longitud]);
+                        }
+                    });
+                }
+                
+                puntosRuta.push(coordsDestino);
+
+                // Línea de ruta que pasa por todas las paradas
+                const ruta = L.polyline(puntosRuta, {
+                    color: viaje.color,
+                    weight: 4,
+                    opacity: 0.7
+                }).addTo(mapaRutas);
+
+                // Marcador origen
+                L.circleMarker(coordsOrigen, {
+                    radius: 8,
+                    fillColor: '#2ecc71',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                }).addTo(mapaRutas)
+                    .bindPopup(`<b>Origen:</b> ${viaje.origen}`);
+
+                // Marcadores de paradas
+                if (viaje.paradas && viaje.paradas.length > 0) {
+                    viaje.paradas.forEach(parada => {
+                        if (parada.latitud && parada.longitud) {
+                            L.circleMarker([parada.latitud, parada.longitud], {
+                                radius: 6,
+                                fillColor: viaje.color,
+                                color: '#fff',
+                                weight: 2,
+                                opacity: 1,
+                                fillOpacity: 0.8
+                            }).addTo(mapaRutas)
+                                .bindPopup(`<div>
+                                    <b>Parada ${parada.orden}:</b> ${parada.nombre}<br>
+                                    <small>${parada.ciudad}</small><br>
+                                    <small>Tiempo: ${parada.tiempoDesdeInicio}</small>
+                                </div>`);
+                        }
+                    });
+                }
+
+                // Marcador destino
+                L.circleMarker(coordsDestino, {
+                    radius: 8,
+                    fillColor: '#e74c3c',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                }).addTo(mapaRutas)
+                    .bindPopup(`<b>Destino:</b> ${viaje.destino}`);
+
+                // Popup en el centro de la ruta
+                const centro = [(coordsOrigen[0] + coordsDestino[0]) / 2, (coordsOrigen[1] + coordsDestino[1]) / 2];
+                L.marker(centro, {
+                    icon: L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style="background-color: ${viaje.color}; color: white; padding: 2px 4px; border-radius: 3px; font-size: 8px; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.2); overflow: hidden; text-overflow: ellipsis; max-width: 90px; cursor: pointer;" title="${viaje.nombre} - ${viaje.fecha}">
+                                <b>${viaje.nombre}</b> ${viaje.fecha}
+                               </div>`,
+                        iconSize: [90, 20],
+                        iconAnchor: [45, 10]
+                    })
+                }).addTo(mapaRutas);
+            }
+        });
+
+        // Ajustar vista para mostrar todas las rutas
+        setTimeout(() => {
+            mapaRutas.invalidateSize();
+        }, 100);
+    };
+
+    function obtenerCoordenadas(ciudad) {
+        // Buscar coincidencia exacta primero
+        if (ciudadesEspana[ciudad]) {
+            return ciudadesEspana[ciudad];
+        }
+
+        // Buscar coincidencia parcial (insensible a mayúsculas)
+        const ciudadNormalizada = ciudad.toLowerCase();
+        for (const [nombre, coords] of Object.entries(ciudadesEspana)) {
+            if (nombre.toLowerCase().includes(ciudadNormalizada) || ciudadNormalizada.includes(nombre.toLowerCase())) {
+                return coords;
+            }
+        }
+
+        // Si no se encuentra, retornar coordenadas por defecto (Madrid)
+        console.warn(`Ciudad no encontrada: ${ciudad}. Usando coordenadas de Madrid.`);
+        return [40.4168, -3.7038];
+    }
+</script>

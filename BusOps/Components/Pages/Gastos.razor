@@ -1,0 +1,376 @@
+@page "/gastos"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@using BusOps.Models
+@using BusOps.Helpers
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Gastos</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#gastoModal" @onclick="MostrarFormularioNuevo">
+        <span class="bi bi-plus-circle"></span> Nuevo Gasto
+    </button>
+</div>
+
+<!-- Modal Gasto -->
+<div class="modal fade" id="gastoModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #FF9800;">
+                <h5 class="modal-title">@(gastoSeleccionado.Id > 0 ? "Editar Gasto" : "Nuevo Gasto")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarGasto">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Fecha *</label>
+                        <input type="date" class="form-control" @bind="fecha" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Tipo de Gasto *</label>
+                        <select class="form-select" @bind="gastoSeleccionado!.Tipo">
+                            @foreach (var tipo in Enum.GetValues<TipoGasto>())
+                            {
+                                <option value="@tipo">@tipo.GetDisplayName()</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Monto (€) *</label>
+                        <input type="number" step="0.01" class="form-control" @bind="gastoSeleccionado!.Monto" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Proveedor</label>
+                        <select class="form-select" @bind="gastoSeleccionado!.ProveedorId">
+                            <option value="">-- Seleccionar proveedor --</option>
+                            @foreach (var proveedor in proveedores)
+                            {
+                                <option value="@proveedor.Id">@proveedor.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Número de Factura</label>
+                        <input type="text" class="form-control" @bind="gastoSeleccionado!.NumeroFactura" placeholder="N° de factura" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Autobús (opcional)</label>
+                        <select class="form-select" @bind="gastoSeleccionado!.AutobusId">
+                            <option value="">-- Sin asignar --</option>
+                            @foreach (var autobus in autobuses)
+                            {
+                                <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea class="form-control" rows="3" @bind="gastoSeleccionado!.Descripcion" placeholder="Detalles del gasto..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Registro de Gastos</h5>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <div class="btn-group" role="group">
+                <button class="btn @(filtroTipo == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorTipo(null)">
+                    Todos
+                </button>
+                <button class="btn @(filtroTipo == TipoGasto.Combustible ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorTipo(TipoGasto.Combustible)">
+                    Combustible
+                </button>
+                <button class="btn @(filtroTipo == TipoGasto.Mantenimiento ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorTipo(TipoGasto.Mantenimiento)">
+                    Mantenimiento
+                </button>
+                <button class="btn @(filtroTipo == TipoGasto.Salarios ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorTipo(TipoGasto.Salarios)">
+                    Salarios
+                </button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Descripción</th>
+                        <th>Proveedor</th>
+                        <th>Factura</th>
+                        <th>Autobús</th>
+                        <th>Monto</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var gasto in GastosFiltrados.OrderByDescending(g => g.Fecha))
+                    {
+                        var autobus = autobuses.FirstOrDefault(a => a.Id == gasto.AutobusId);
+                        
+                        <tr>
+                            <td>@gasto.Fecha.ToString("dd/MM/yyyy")</td>
+                            <td>
+                                <span class="badge @ObtenerClaseTipo(gasto.Tipo)">
+                                    @gasto.Tipo.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>@gasto.Descripcion</td>
+                            <td>@(gasto.Proveedor?.Nombre ?? "-")</td>
+                            <td><small>@gasto.NumeroFactura</small></td>
+                            <td>
+                                @if (autobus != null)
+                                {
+                                    <small>@autobus.Matricula</small>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td><strong>@gasto.Monto.ToString("C2")</strong></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#gastoModal" @onclick="() => EditarGasto(gasto)" title="Editar">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarGasto(gasto.Id)" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!GastosFiltrados.Any())
+            {
+                <p class="text-center text-muted py-4">No hay gastos registrados</p>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Total Gastos</h5>
+                <h2 class="text-danger">@gastos.Sum(g => g.Monto).ToString("C2")</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Este Mes</h5>
+                <h2 class="text-warning">@gastos.Where(g => g.Fecha.Month == DateTime.Now.Month && g.Fecha.Year == DateTime.Now.Year).Sum(g => g.Monto).ToString("C2")</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Combustible</h5>
+                <h2 class="text-info">@gastos.Where(g => g.Tipo == TipoGasto.Combustible).Sum(g => g.Monto).ToString("C2")</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Mantenimiento</h5>
+                <h2 class="text-primary">@gastos.Where(g => g.Tipo == TipoGasto.Mantenimiento).Sum(g => g.Monto).ToString("C2")</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>Gastos por Categoría</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Categoría</th>
+                        <th>Cantidad</th>
+                        <th>Total</th>
+                        <th>Promedio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tipoGasto in Enum.GetValues<TipoGasto>())
+                    {
+                        var gastosCategoria = gastos.Where(g => g.Tipo == tipoGasto);
+                        var total = gastosCategoria.Sum(g => g.Monto);
+                        var cantidad = gastosCategoria.Count();
+                        var promedio = cantidad > 0 ? total / cantidad : 0;
+                        
+                        @if (cantidad > 0)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge @ObtenerClaseTipo(tipoGasto)">
+                                        @tipoGasto.GetDisplayName()
+                                    </span>
+                                </td>
+                                <td>@cantidad</td>
+                                <td><strong>@total.ToString("C2")</strong></td>
+                                <td>@promedio.ToString("C2")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Gasto> gastos = new();
+    private List<Autobus> autobuses = new();
+    private List<Proveedor> proveedores = new();
+    private Gasto gastoSeleccionado = new();
+    private DateTime fecha = DateTime.Now;
+    private TipoGasto? filtroTipo = null;
+
+    private IEnumerable<Gasto> GastosFiltrados =>
+        filtroTipo == null ? gastos : gastos.Where(g => g.Tipo == filtroTipo);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarGastos();
+        await CargarAutobuses();
+        await CargarProveedores();
+    }
+
+    private async Task CargarGastos()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        gastos = await context.Gastos
+            .Include(g => g.Proveedor)
+            .ToListAsync();
+    }
+
+    private async Task CargarAutobuses()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        autobuses = await context.Autobuses.ToListAsync();
+    }
+
+    private async Task CargarProveedores()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        proveedores = await context.Proveedores.Where(p => p.Activo).ToListAsync();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        gastoSeleccionado = new Gasto
+        {
+            Tipo = TipoGasto.Otros
+        };
+        fecha = DateTime.Now;
+    }
+
+    private void EditarGasto(Gasto gasto)
+    {
+        gastoSeleccionado = new Gasto
+        {
+            Id = gasto.Id,
+            Fecha = gasto.Fecha,
+            Tipo = gasto.Tipo,
+            Descripcion = gasto.Descripcion,
+            Monto = gasto.Monto,
+            ProveedorId = gasto.ProveedorId,
+            NumeroFactura = gasto.NumeroFactura,
+            AutobusId = gasto.AutobusId
+        };
+        fecha = gasto.Fecha;
+    }
+
+    private async Task GuardarGasto()
+    {
+        gastoSeleccionado.Fecha = fecha;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (gastoSeleccionado.Id == 0)
+        {
+            context.Gastos.Add(gastoSeleccionado);
+        }
+        else
+        {
+            context.Gastos.Update(gastoSeleccionado);
+        }
+        
+        await context.SaveChangesAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('gastoModal')).hide()");
+        
+        await CargarGastos();
+        gastoSeleccionado = new();
+        StateHasChanged();
+    }
+
+    private async Task EliminarGasto(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var gasto = await context.Gastos.FindAsync(id);
+        if (gasto != null)
+        {
+            context.Gastos.Remove(gasto);
+            await context.SaveChangesAsync();
+            await CargarGastos();
+            StateHasChanged();
+        }
+    }
+
+    private void FiltrarPorTipo(TipoGasto? tipo)
+    {
+        filtroTipo = tipo;
+    }
+
+    private string ObtenerClaseTipo(TipoGasto tipo)
+    {
+        return tipo switch
+        {
+            TipoGasto.Combustible => "bg-warning",
+            TipoGasto.Mantenimiento => "bg-primary",
+            TipoGasto.Seguros => "bg-info",
+            TipoGasto.Salarios => "bg-success",
+            TipoGasto.Licencias => "bg-secondary",
+            TipoGasto.Limpieza => "bg-light text-dark",
+            TipoGasto.Peajes => "bg-dark",
+            TipoGasto.Multas => "bg-danger",
+            TipoGasto.Otros => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+}

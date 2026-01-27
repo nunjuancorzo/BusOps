@@ -1,0 +1,375 @@
+@page "/usuarios"
+@using BusOps.Data
+@using BusOps.Models
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject IJSRuntime JSRuntime
+@inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Gestión de Usuarios</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="mb-3">
+        <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#usuarioModal" @onclick="MostrarFormularioNuevo">
+            <i class="bi bi-plus-circle"></i> Nuevo Usuario
+        </button>
+    </div>
+
+    @if (errorMessage != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick='() => errorMessage = null'></button>
+        </div>
+    }
+
+    @if (successMessage != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @successMessage
+            <button type="button" class="btn-close" @onclick='() => successMessage = null'></button>
+        </div>
+    }
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Usuario</th>
+                            <th>Nombre Completo</th>
+                            <th>Email</th>
+                            <th>Rol</th>
+                            <th>Estado</th>
+                            <th>Fecha Creación</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (usuarios == null)
+                        {
+                            <tr>
+                                <td colspan="8" class="text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Cargando...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        else if (!usuarios.Any())
+                        {
+                            <tr>
+                                <td colspan="8" class="text-center text-muted">No hay usuarios registrados</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var usuario in usuarios)
+                            {
+                                <tr>
+                                    <td>@usuario.Id</td>
+                                    <td><strong>@usuario.Username</strong></td>
+                                    <td>@usuario.NombreCompleto</td>
+                                    <td>@usuario.Email</td>
+                                    <td>
+                                        @if (usuario.Rol == "Administrador")
+                                        {
+                                            <span class="badge bg-danger"><i class="bi bi-shield-fill-check"></i> @usuario.Rol</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-info"><i class="bi bi-person-fill"></i> @usuario.Rol</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (usuario.Activo)
+                                        {
+                                            <span class="badge bg-success">Activo</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Inactivo</span>
+                                        }
+                                    </td>
+                                    <td>@usuario.FechaCreacion.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#usuarioModal" @onclick='() => EditarUsuario(usuario)' title="Editar">
+                                                <i class="bi bi-pencil-fill"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick='() => EliminarUsuario(usuario.Id)' disabled="@(usuario.Id == 1)" title="Eliminar">
+                                                <i class="bi bi-trash-fill"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para crear/editar usuario -->
+<div class="modal fade" id="usuarioModal" tabindex="-1" aria-labelledby="usuarioModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #607D8B;">
+                <h5 class="modal-title" id="usuarioModalLabel">
+                    @if (usuarioSeleccionado.Id == 0)
+                    {
+                        <i class="bi bi-plus-circle"></i> <text>Nuevo Usuario</text>
+                    }
+                    else
+                    {
+                        <i class="bi bi-pencil-fill"></i> <text>Editar Usuario</text>
+                    }
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarUsuario">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Usuario <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="usuarioSeleccionado.Username" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nombre Completo <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="usuarioSeleccionado.NombreCompleto" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" @bind="usuarioSeleccionado.Email" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Rol <span class="text-danger">*</span></label>
+                        <select class="form-select" @bind="usuarioSeleccionado.Rol">
+                            <option value="Usuario">Usuario</option>
+                            <option value="Administrador">Administrador</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Estado</label>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" @bind="usuarioSeleccionado.Activo" />
+                            <label class="form-check-label">Activo</label>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-3" />
+
+                <h6 class="mb-3">
+                    @if (usuarioSeleccionado.Id == 0)
+                    {
+                        <i class="bi bi-key-fill"></i> <text>Contraseña</text>
+                    }
+                    else
+                    {
+                        <i class="bi bi-key-fill"></i> <text>Gestión de Contraseña</text>
+                    }
+                </h6>
+
+                <div class="row g-3">
+                    @if (usuarioSeleccionado.Id == 0)
+                    {
+                        <div class="col-md-12">
+                            <label class="form-label">Contraseña <span class="text-danger">*</span></label>
+                            <input type="password" class="form-control" @bind="nuevaPassword" placeholder="Ingrese la contraseña" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="col-md-6">
+                            <label class="form-label">Contraseña Actual</label>
+                            <input type="text" class="form-control" value="@usuarioSeleccionado.Password" readonly disabled />
+                            <small class="text-muted">La contraseña actual no se puede visualizar por seguridad</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Nueva Contraseña (opcional)</label>
+                            <input type="password" class="form-control" @bind="nuevaPassword" placeholder="Dejar en blanco para no modificar" />
+                            <small class="text-muted">Solo se cambiará si ingresa una nueva contraseña</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Usuario>? usuarios;
+    private Usuario usuarioSeleccionado = new();
+    private string? errorMessage;
+    private string? successMessage;
+    private bool hasChecked = false;
+    private string nuevaPassword = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !hasChecked)
+        {
+            hasChecked = true;
+            await CargarUsuarios();
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarUsuarios()
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            usuarios = await context.Usuarios.OrderBy(u => u.Id).ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al cargar usuarios: {ex.Message}";
+        }
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        usuarioSeleccionado = new Usuario { Activo = true };
+        nuevaPassword = string.Empty;
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private void EditarUsuario(Usuario usuario)
+    {
+        usuarioSeleccionado = new Usuario
+        {
+            Id = usuario.Id,
+            Username = usuario.Username,
+            Password = usuario.Password,
+            NombreCompleto = usuario.NombreCompleto,
+            Email = usuario.Email,
+            Rol = usuario.Rol,
+            Activo = usuario.Activo,
+            FechaCreacion = usuario.FechaCreacion
+        };
+        nuevaPassword = string.Empty;
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private async Task GuardarUsuario()
+    {
+        try
+        {
+            // Validación de campos obligatorios
+            if (string.IsNullOrWhiteSpace(usuarioSeleccionado.Username) ||
+                string.IsNullOrWhiteSpace(usuarioSeleccionado.NombreCompleto) ||
+                string.IsNullOrWhiteSpace(usuarioSeleccionado.Email))
+            {
+                errorMessage = "Por favor, complete todos los campos obligatorios";
+                return;
+            }
+
+            // Validación de contraseña para nuevo usuario
+            if (usuarioSeleccionado.Id == 0 && string.IsNullOrWhiteSpace(nuevaPassword))
+            {
+                errorMessage = "La contraseña es obligatoria para nuevos usuarios";
+                return;
+            }
+
+            using var context = await DbFactory.CreateDbContextAsync();
+
+            if (usuarioSeleccionado.Id == 0)
+            {
+                // Verificar si el username ya existe
+                var existe = await context.Usuarios.AnyAsync(u => u.Username == usuarioSeleccionado.Username);
+                if (existe)
+                {
+                    errorMessage = "El nombre de usuario ya existe";
+                    return;
+                }
+
+                // Asignar la contraseña al nuevo usuario
+                usuarioSeleccionado.Password = nuevaPassword;
+                usuarioSeleccionado.FechaCreacion = DateTime.Now;
+                context.Usuarios.Add(usuarioSeleccionado);
+                successMessage = "Usuario creado exitosamente";
+            }
+            else
+            {
+                // Verificar si el username ya existe (excepto el actual)
+                var existe = await context.Usuarios.AnyAsync(u => u.Username == usuarioSeleccionado.Username && u.Id != usuarioSeleccionado.Id);
+                if (existe)
+                {
+                    errorMessage = "El nombre de usuario ya existe";
+                    return;
+                }
+
+                // Solo actualizar la contraseña si se proporcionó una nueva
+                if (!string.IsNullOrWhiteSpace(nuevaPassword))
+                {
+                    usuarioSeleccionado.Password = nuevaPassword;
+                }
+
+                context.Usuarios.Update(usuarioSeleccionado);
+                successMessage = "Usuario actualizado exitosamente";
+            }
+
+            await context.SaveChangesAsync();
+            await CargarUsuarios();
+            
+            await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('usuarioModal')).hide()");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al guardar: {ex.Message}";
+        }
+    }
+
+    private async Task EliminarUsuario(int id)
+    {
+        if (id == 1)
+        {
+            errorMessage = "No se puede eliminar el usuario administrador principal";
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este usuario?");
+        if (!confirmed) return;
+
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            var usuario = await context.Usuarios.FindAsync(id);
+            if (usuario != null)
+            {
+                context.Usuarios.Remove(usuario);
+                await context.SaveChangesAsync();
+                successMessage = "Usuario eliminado exitosamente";
+                await CargarUsuarios();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error al eliminar: {ex.Message}";
+        }
+    }
+}

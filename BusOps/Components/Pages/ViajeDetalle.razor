@@ -1,0 +1,162 @@
+@page "/viajes/nuevo"
+@page "/viajes/{Id:int}"
+@using BusOps.Models
+@using BusOps.Helpers
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>@(Id == 0 ? "Nuevo Viaje" : "Editar Viaje") - BusOps</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@(Id == 0 ? "Nuevo Viaje" : "Editar Viaje")</h1>
+    <button class="btn btn-outline-secondary" @onclick="Volver">
+        <i class="bi bi-arrow-left"></i> Volver
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Ruta *</label>
+                <select class="form-select" @bind="viaje.RutaId">
+                    <option value="0">-- Seleccione una ruta --</option>
+                    @foreach (var ruta in rutas.Where(r => r.Activa))
+                    {
+                        <option value="@ruta.Id">@ruta.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Autobús *</label>
+                <select class="form-select" @bind="viaje.AutobusId">
+                    <option value="0">-- Seleccione un autobús --</option>
+                    @foreach (var autobus in autobuses.Where(a => a.Estado == EstadoAutobus.Disponible))
+                    {
+                        <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Conductor *</label>
+                <select class="form-select" @bind="viaje.ConductorId">
+                    <option value="0">-- Seleccione un conductor --</option>
+                    @foreach (var conductor in conductores.Where(c => c.Estado == EstadoConductor.Activo))
+                    {
+                        <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Estado *</label>
+                <select class="form-select" @bind="viaje.Estado">
+                    @foreach (var estado in Enum.GetValues<EstadoViaje>())
+                    {
+                        <option value="@estado">@estado.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Fecha y Hora de Salida *</label>
+                <input type="datetime-local" class="form-control" @bind="fechaHoraSalida" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Fecha y Hora Llegada Estimada *</label>
+                <input type="datetime-local" class="form-control" @bind="fechaHoraLlegadaEstimada" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Asientos Disponibles *</label>
+                <input type="number" class="form-control" @bind="viaje.AsientosDisponibles" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Precio del Viaje (€) *</label>
+                <input type="number" step="0.01" class="form-control" @bind="viaje.PrecioViaje" />
+            </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="Guardar">
+                <i class="bi bi-save"></i> Guardar
+            </button>
+            <button class="btn btn-secondary" @onclick="Volver">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Viaje viaje = new();
+    private DateTime fechaHoraSalida = DateTime.Now;
+    private DateTime fechaHoraLlegadaEstimada = DateTime.Now.AddHours(3);
+
+    private List<Ruta> rutas = new();
+    private List<Autobus> autobuses = new();
+    private List<Conductor> conductores = new();
+
+    protected override void OnInitialized()
+    {
+        CargarDatos();
+        
+        if (Id > 0)
+        {
+            // TODO: Cargar desde base de datos
+            viaje = new Viaje
+            {
+                Id = Id,
+                RutaId = 1,
+                AutobusId = 1,
+                ConductorId = 1,
+                FechaHoraSalida = DateTime.Now,
+                FechaHoraLlegadaEstimada = DateTime.Now.AddHours(3),
+                AsientosDisponibles = 50,
+                PrecioViaje = 45.00m,
+                Estado = EstadoViaje.Programado
+            };
+            fechaHoraSalida = viaje.FechaHoraSalida;
+            fechaHoraLlegadaEstimada = viaje.FechaHoraLlegadaEstimada;
+        }
+        else
+        {
+            viaje = new Viaje { Estado = EstadoViaje.Programado };
+        }
+    }
+
+    private void CargarDatos()
+    {
+        // TODO: Cargar desde base de datos
+        rutas = new List<Ruta>
+        {
+            new Ruta { Id = 1, Nombre = "Madrid - Barcelona", Activa = true }
+        };
+        autobuses = new List<Autobus>
+        {
+            new Autobus { Id = 1, Matricula = "1234-ABC", Marca = "Mercedes", Modelo = "Tourismo", Estado = EstadoAutobus.Disponible }
+        };
+        conductores = new List<Conductor>
+        {
+            new Conductor { Id = 1, Nombre = "Carlos", Apellidos = "García", Estado = EstadoConductor.Activo }
+        };
+    }
+
+    private void Guardar()
+    {
+        viaje.FechaHoraSalida = fechaHoraSalida;
+        viaje.FechaHoraLlegadaEstimada = fechaHoraLlegadaEstimada;
+        // TODO: Guardar en base de datos
+        NavigationManager.NavigateTo("/viajes");
+    }
+
+    private void Volver()
+    {
+        NavigationManager.NavigateTo("/viajes");
+    }
+}

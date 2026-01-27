@@ -1,0 +1,107 @@
+@page "/rutas/nuevo"
+@page "/rutas/{Id:int}"
+@using BusOps.Models
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>@(Id == 0 ? "Nueva Ruta" : "Editar Ruta") - BusOps</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@(Id == 0 ? "Nueva Ruta" : "Editar Ruta")</h1>
+    <button class="btn btn-outline-secondary" @onclick="Volver">
+        <i class="bi bi-arrow-left"></i> Volver
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Nombre de la Ruta *</label>
+                <input type="text" class="form-control" @bind="ruta.Nombre" placeholder="Ej: Madrid - Barcelona Express" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Origen *</label>
+                <input type="text" class="form-control" @bind="ruta.Origen" placeholder="Ciudad de origen" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Destino *</label>
+                <input type="text" class="form-control" @bind="ruta.Destino" placeholder="Ciudad de destino" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Distancia (km) *</label>
+                <input type="number" step="0.1" class="form-control" @bind="ruta.DistanciaKm" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Duración (horas) *</label>
+                <input type="number" step="0.5" class="form-control" @bind="duracionHoras" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Precio Base (€) *</label>
+                <input type="number" step="0.01" class="form-control" @bind="ruta.PrecioBase" />
+            </div>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" @bind="ruta.Activa" id="checkActiva">
+            <label class="form-check-label" for="checkActiva">
+                Ruta Activa
+            </label>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="Guardar">
+                <i class="bi bi-save"></i> Guardar
+            </button>
+            <button class="btn btn-secondary" @onclick="Volver">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Ruta ruta = new();
+    private double duracionHoras = 0;
+
+    protected override void OnInitialized()
+    {
+        if (Id > 0)
+        {
+            // TODO: Cargar desde base de datos
+            ruta = new Ruta
+            {
+                Id = Id,
+                Nombre = "Madrid - Barcelona",
+                Origen = "Madrid",
+                Destino = "Barcelona",
+                DistanciaKm = 621.5,
+                DuracionEstimada = TimeSpan.FromHours(6.5),
+                PrecioBase = 45.00m,
+                Activa = true
+            };
+            duracionHoras = ruta.DuracionEstimada.TotalHours;
+        }
+        else
+        {
+            ruta = new Ruta { Activa = true };
+        }
+    }
+
+    private void Guardar()
+    {
+        ruta.DuracionEstimada = TimeSpan.FromHours(duracionHoras);
+        // TODO: Guardar en base de datos
+        NavigationManager.NavigateTo("/rutas");
+    }
+
+    private void Volver()
+    {
+        NavigationManager.NavigateTo("/rutas");
+    }
+}

@@ -1,0 +1,160 @@
+﻿@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<nav class="navbar navbar-expand-lg navbar-dark shadow-sm" style="background: linear-gradient(135deg, #2d0a59 0%, #6a1b9a 50%, #2d0a59 100%); min-height: 80px; border-bottom: 2px solid rgba(255, 255, 255, 0.1); position: sticky; top: 0; z-index: 1030;">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand d-flex align-items-center" href="">
+            <img src="/logo-busopsnew.jpg" alt="BusOps Logo" style="height: 60px; width: auto; border-radius: 10px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));" />
+        </a>
+        
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarMain">
+            @if (showUserInfo)
+            {
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-4">
+                    <li class="nav-item">
+                        <a class="nav-link text-white px-3 py-2 rounded transition d-flex align-items-center" href="" style="transition: all 0.3s ease;">
+                            <i class="bi bi-house-fill me-2" style="font-size: 1.4rem; color: #4CAF50;"></i> Gestión
+                        </a>
+                    </li>
+                    
+                    <!-- Operaciones -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle text-white px-3 py-2 rounded transition d-flex align-items-center" href="#" id="navbarDropdownOperaciones" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="transition: all 0.3s ease;">
+                            <i class="bi bi-calendar-check-fill me-2" style="font-size: 1.4rem; color: #2196F3;"></i> Operaciones
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="navbarDropdownOperaciones">
+                            <li><a class="dropdown-item d-flex align-items-center" href="viajes"><i class="bi bi-airplane-fill me-2" style="font-size: 1.2rem; color: #2196F3;"></i>Viajes</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="reservas"><i class="bi bi-ticket-perforated-fill me-2" style="font-size: 1.2rem; color: #4CAF50;"></i>Reservas</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="rutas"><i class="bi bi-geo-alt-fill me-2" style="font-size: 1.2rem; color: #FF9800;"></i>Rutas</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Flota -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle text-white px-3 py-2 rounded transition d-flex align-items-center" href="#" id="navbarDropdownFlota" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="transition: all 0.3s ease;">
+                            <i class="bi bi-bus-front-fill me-2" style="font-size: 1.4rem; color: #FF9800;"></i> Flota
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="navbarDropdownFlota">
+                            <li><a class="dropdown-item d-flex align-items-center" href="autobuses"><i class="bi bi-bus-front-fill me-2" style="font-size: 1.2rem; color: #FF9800;"></i>Autobuses</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="conductores"><i class="bi bi-person-badge-fill me-2" style="font-size: 1.2rem; color: #9C27B0;"></i>Conductores</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="mantenimiento"><i class="bi bi-tools me-2" style="font-size: 1.2rem; color: #F44336;"></i>Mantenimiento</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Contactos -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle text-white px-3 py-2 rounded transition d-flex align-items-center" href="#" id="navbarDropdownClientes" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="transition: all 0.3s ease;">
+                            <i class="bi bi-people-fill me-2" style="font-size: 1.4rem; color: #E91E63;"></i> Contactos
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="navbarDropdownClientes">
+                            <li><a class="dropdown-item d-flex align-items-center" href="pasajeros"><i class="bi bi-person-check-fill me-2" style="font-size: 1.2rem; color: #4CAF50;"></i>Pasajeros</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="clientes"><i class="bi bi-building-fill me-2" style="font-size: 1.2rem; color: #2196F3;"></i>Clientes</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="proveedores"><i class="bi bi-shop-window me-2" style="font-size: 1.2rem; color: #9C27B0;"></i>Proveedores</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Finanzas -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle text-white px-3 py-2 rounded transition d-flex align-items-center" href="#" id="navbarDropdownFinanzas" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="transition: all 0.3s ease;">
+                            <i class="bi bi-cash-coin me-2" style="font-size: 1.4rem; color: #FFC107;"></i> Finanzas
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="navbarDropdownFinanzas">
+                            <li><a class="dropdown-item d-flex align-items-center" href="presupuestos"><i class="bi bi-file-earmark-text me-2" style="font-size: 1.2rem; color: #4CAF50;"></i>Presupuestos</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="facturas"><i class="bi bi-receipt-cutoff me-2" style="font-size: 1.2rem; color: #2196F3;"></i>Facturas</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center" href="gastos"><i class="bi bi-wallet-fill me-2" style="font-size: 1.2rem; color: #F44336;"></i>Gastos</a></li>
+                        </ul>
+                    </li>
+                    
+                    @if (userRole == "Administrador")
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link text-white px-3 py-2 rounded transition d-flex align-items-center" href="configuracion" style="transition: all 0.3s ease;">
+                                <i class="bi bi-gear-fill me-2" style="font-size: 1.4rem; color: #607D8B;"></i> Configuración
+                            </a>
+                        </li>
+                    }
+                </ul>
+
+                <div class="d-flex align-items-center text-white">
+                    <div class="me-2 d-none d-md-flex align-items-center" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border-radius: 6px; backdrop-filter: blur(10px);">
+                        <i class="bi bi-person-circle me-1" style="font-size: 0.95rem;"></i>
+                        <div>
+                            <div style="font-size: 0.75rem; font-weight: 500;">@username</div>
+                            <div style="font-size: 0.65rem; opacity: 0.8;">@userRole</div>
+                        </div>
+                    </div>
+                    <button @onclick="Logout" class="btn btn-outline-light btn-sm" style="padding: 4px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 500; transition: all 0.3s ease;">
+                        <i class="bi bi-box-arrow-right" style="font-size: 0.85rem;"></i> Salir
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</nav>
+
+<style>
+    .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .dropdown-menu {
+        background-color: #2d2d2d;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .dropdown-item {
+        color: #fff;
+        transition: all 0.3s ease;
+    }
+
+    .dropdown-item:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #fff;
+    }
+</style>
+
+@code {
+    private string username = "Admin";
+    private string userRole = "Usuario";
+    private bool hasCheckedAuth = false;
+    private bool showUserInfo = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !hasCheckedAuth)
+        {
+            hasCheckedAuth = true;
+            var usernameResult = await SessionStorage.GetAsync<string>("username");
+            var roleResult = await SessionStorage.GetAsync<string>("userRole");
+            
+            if (usernameResult.Success && !string.IsNullOrEmpty(usernameResult.Value))
+            {
+                username = usernameResult.Value;
+                showUserInfo = true;
+            }
+            
+            if (roleResult.Success && !string.IsNullOrEmpty(roleResult.Value))
+            {
+                userRole = roleResult.Value;
+            }
+            
+            StateHasChanged();
+        }
+    }
+
+    private async Task Logout()
+    {
+        await SessionStorage.DeleteAsync("isAuthenticated");
+        await SessionStorage.DeleteAsync("username");
+        await SessionStorage.DeleteAsync("userRole");
+        await SessionStorage.DeleteAsync("userId");
+        NavigationManager.NavigateTo("/login", forceLoad: true);
+    }
+}
+

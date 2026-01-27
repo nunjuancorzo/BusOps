@@ -1,0 +1,438 @@
+@page "/mantenimiento"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@using BusOps.Helpers
+@using Microsoft.AspNetCore.Components
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Mantenimiento</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#mantenimientoModal" @onclick="MostrarFormularioNuevo">
+        <span class="bi bi-plus-circle"></span> Nuevo Mantenimiento
+    </button>
+</div>
+
+<!-- Modal Mantenimiento -->
+<div class="modal fade" id="mantenimientoModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #FF9800;">
+                <h5 class="modal-title">@(mantenimientoSeleccionado.Id > 0 ? "Editar Mantenimiento" : "Nuevo Mantenimiento")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarMantenimiento">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Autobús *</label>
+                        <select class="form-select" @bind="mantenimientoSeleccionado!.AutobusId">
+                            <option value="0">-- Seleccione un autobús --</option>
+                            @foreach (var autobus in autobuses)
+                            {
+                                <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Tipo de Mantenimiento *</label>
+                        <select class="form-select" @bind="mantenimientoSeleccionado!.Tipo">
+                            @foreach (var tipo in Enum.GetValues<TipoMantenimiento>())
+                            {
+                                <option value="@tipo">@tipo.GetDisplayName()</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Fecha Inicio *</label>
+                        <input type="date" class="form-control" @bind="fechaInicio" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Fecha Fin</label>
+                        <input type="date" class="form-control" @bind="fechaFin" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Taller</label>
+                        <input type="text" class="form-control" @bind="mantenimientoSeleccionado!.Taller" placeholder="Nombre del taller" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Costo (€)</label>
+                        <input type="number" step="0.01" class="form-control" @bind="mantenimientoSeleccionado!.Costo" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Kilometraje</label>
+                        <input type="number" class="form-control" @bind="mantenimientoSeleccionado!.KilometrajeMantenimiento" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Estado *</label>
+                        <select class="form-select" @bind="mantenimientoSeleccionado!.Estado">
+                            @foreach (var estado in Enum.GetValues<EstadoMantenimiento>())
+                            {
+                                <option value="@estado">@estado.GetDisplayName()</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea class="form-control" rows="3" @bind="mantenimientoSeleccionado!.Descripcion" placeholder="Detalles del mantenimiento..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Historial de Mantenimiento</h5>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <div class="btn-group" role="group">
+                <button class="btn @(filtroEstado == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(null)">
+                    Todos
+                </button>
+                <button class="btn @(filtroEstado == EstadoMantenimiento.Programado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoMantenimiento.Programado)">
+                    Programados
+                </button>
+                <button class="btn @(filtroEstado == EstadoMantenimiento.EnProceso ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoMantenimiento.EnProceso)">
+                    En Proceso
+                </button>
+                <button class="btn @(filtroEstado == EstadoMantenimiento.Completado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoMantenimiento.Completado)">
+                    Completados
+                </button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Autobús</th>
+                        <th>Tipo</th>
+                        <th>Fecha Inicio</th>
+                        <th>Fecha Fin</th>
+                        <th>Taller</th>
+                        <th>Kilometraje</th>
+                        <th>Costo</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var mant in MantenimientosFiltrados.OrderByDescending(m => m.FechaInicio))
+                    {
+                        var autobus = autobuses.FirstOrDefault(a => a.Id == mant.AutobusId);
+                        
+                        <tr>
+                            <td>
+                                <strong>@autobus?.Matricula</strong><br/>
+                                <small class="text-muted">@autobus?.Marca @autobus?.Modelo</small>
+                            </td>
+                            <td>
+                                <span class="badge @ObtenerClaseTipo(mant.Tipo)">
+                                    @mant.Tipo.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>@mant.FechaInicio.ToString("dd/MM/yyyy")</td>
+                            <td>@(mant.FechaFin?.ToString("dd/MM/yyyy") ?? "En curso")</td>
+                            <td>@mant.Taller</td>
+                            <td>@mant.KilometrajeMantenimiento.ToString("N0") km</td>
+                            <td>@mant.Costo.ToString("C2")</td>
+                            <td>
+                                <span class="badge @ObtenerClaseEstado(mant.Estado)">
+                                    @mant.Estado.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-info" @onclick="() => VerDetalles(mant)">
+                                    <img src="/info.png" alt="Ver Detalles" style="height: 14px; width: 14px; object-fit: contain;" />
+                                </button>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#mantenimientoModal" @onclick="() => EditarMantenimiento(mant)" title="Editar">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarMantenimiento(mant.Id)" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!MantenimientosFiltrados.Any())
+            {
+                <p class="text-center text-muted py-4">No hay registros de mantenimiento</p>
+            }
+        </div>
+    </div>
+</div>
+
+@if (mantenimientoDetalles != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Detalles del Mantenimiento</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarDetalles"></button>
+                </div>
+                <div class="modal-body">
+                    @{
+                        var autobus = autobuses.FirstOrDefault(a => a.Id == mantenimientoDetalles.AutobusId);
+                    }
+                    <dl class="row">
+                        <dt class="col-sm-4">Autobús:</dt>
+                        <dd class="col-sm-8">@autobus?.Matricula - @autobus?.Marca @autobus?.Modelo</dd>
+
+                        <dt class="col-sm-4">Tipo:</dt>
+                        <dd class="col-sm-8"><span class="badge @ObtenerClaseTipo(mantenimientoDetalles.Tipo)">@mantenimientoDetalles.Tipo.GetDisplayName()</span></dd>
+
+                        <dt class="col-sm-4">Estado:</dt>
+                        <dd class="col-sm-8"><span class="badge @ObtenerClaseEstado(mantenimientoDetalles.Estado)">@mantenimientoDetalles.Estado.GetDisplayName()</span></dd>
+
+                        <dt class="col-sm-4">Fecha Inicio:</dt>
+                        <dd class="col-sm-8">@mantenimientoDetalles.FechaInicio.ToString("dd/MM/yyyy")</dd>
+
+                        <dt class="col-sm-4">Fecha Fin:</dt>
+                        <dd class="col-sm-8">@(mantenimientoDetalles.FechaFin?.ToString("dd/MM/yyyy") ?? "En curso")</dd>
+
+                        <dt class="col-sm-4">Taller:</dt>
+                        <dd class="col-sm-8">@mantenimientoDetalles.Taller</dd>
+
+                        <dt class="col-sm-4">Kilometraje:</dt>
+                        <dd class="col-sm-8">@mantenimientoDetalles.KilometrajeMantenimiento.ToString("N0") km</dd>
+
+                        <dt class="col-sm-4">Costo:</dt>
+                        <dd class="col-sm-8"><strong>@mantenimientoDetalles.Costo.ToString("C2")</strong></dd>
+
+                        <dt class="col-sm-4">Descripción:</dt>
+                        <dd class="col-sm-8">@mantenimientoDetalles.Descripcion</dd>
+                    </dl>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarDetalles">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="row mt-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Total Mantenimientos</h5>
+                <h2 class="text-primary">@mantenimientos.Count</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">En Proceso</h5>
+                <h2 class="text-warning">@mantenimientos.Count(m => m.Estado == EstadoMantenimiento.EnProceso)</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Programados</h5>
+                <h2 class="text-info">@mantenimientos.Count(m => m.Estado == EstadoMantenimiento.Programado)</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h5 class="card-title">Costo Total</h5>
+                <h2 class="text-danger">@mantenimientos.Where(m => m.Estado == EstadoMantenimiento.Completado).Sum(m => m.Costo).ToString("C2")</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<MantenimientoAutobus> mantenimientos = new();
+    private List<Autobus> autobuses = new();
+    private MantenimientoAutobus mantenimientoSeleccionado = new();
+    private MantenimientoAutobus? mantenimientoDetalles;
+    private DateTime fechaInicio = DateTime.Now;
+    private DateTime? fechaFin;
+    private EstadoMantenimiento? filtroEstado = null;
+
+    [SupplyParameterFromQuery]
+    public int? AutobusId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Matricula { get; set; }
+
+    private bool debeAbrirModal = false;
+
+    private IEnumerable<MantenimientoAutobus> MantenimientosFiltrados =>
+        filtroEstado == null ? mantenimientos : mantenimientos.Where(m => m.Estado == filtroEstado);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+        
+        // Si viene un autobusId en la query string, preparar para abrir el modal
+        if (AutobusId.HasValue && AutobusId.Value > 0)
+        {
+            MostrarFormularioNuevo();
+            mantenimientoSeleccionado.AutobusId = AutobusId.Value;
+            debeAbrirModal = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (debeAbrirModal)
+        {
+            debeAbrirModal = false;
+            await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('mantenimientoModal')).show()");
+        }
+    }
+
+    private async Task CargarDatos()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        autobuses = await context.Autobuses.ToListAsync();
+        mantenimientos = await context.MantenimientosAutobus.ToListAsync();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        mantenimientoSeleccionado = new MantenimientoAutobus
+        {
+            Estado = EstadoMantenimiento.Programado,
+            Tipo = TipoMantenimiento.Preventivo
+        };
+        
+        // Si hay un autobusId preseleccionado, asignarlo
+        if (AutobusId.HasValue && AutobusId.Value > 0)
+        {
+            mantenimientoSeleccionado.AutobusId = AutobusId.Value;
+        }
+        
+        fechaInicio = DateTime.Now;
+        fechaFin = null;
+    }
+
+    private void EditarMantenimiento(MantenimientoAutobus mantenimiento)
+    {
+        mantenimientoSeleccionado = new MantenimientoAutobus
+        {
+            Id = mantenimiento.Id,
+            AutobusId = mantenimiento.AutobusId,
+            Tipo = mantenimiento.Tipo,
+            FechaInicio = mantenimiento.FechaInicio,
+            FechaFin = mantenimiento.FechaFin,
+            Descripcion = mantenimiento.Descripcion,
+            Costo = mantenimiento.Costo,
+            Taller = mantenimiento.Taller,
+            KilometrajeMantenimiento = mantenimiento.KilometrajeMantenimiento,
+            Estado = mantenimiento.Estado
+        };
+        fechaInicio = mantenimiento.FechaInicio;
+        fechaFin = mantenimiento.FechaFin;
+    }
+
+    private async Task GuardarMantenimiento()
+    {
+        mantenimientoSeleccionado.FechaInicio = fechaInicio;
+        mantenimientoSeleccionado.FechaFin = fechaFin;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (mantenimientoSeleccionado.Id == 0)
+        {
+            context.MantenimientosAutobus.Add(mantenimientoSeleccionado);
+        }
+        else
+        {
+            context.MantenimientosAutobus.Update(mantenimientoSeleccionado);
+        }
+        
+        await context.SaveChangesAsync();
+        await CargarDatos();
+
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('mantenimientoModal')).hide()");
+        mantenimientoSeleccionado = null;
+    }
+
+    private async Task EliminarMantenimiento(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var mantenimiento = await context.MantenimientosAutobus.FindAsync(id);
+        if (mantenimiento != null)
+        {
+            context.MantenimientosAutobus.Remove(mantenimiento);
+            await context.SaveChangesAsync();
+            await CargarDatos();
+        }
+    }
+
+    private void VerDetalles(MantenimientoAutobus mantenimiento)
+    {
+        mantenimientoDetalles = mantenimiento;
+    }
+
+    private void CerrarDetalles()
+    {
+        mantenimientoDetalles = null;
+    }
+
+    private void FiltrarPorEstado(EstadoMantenimiento? estado)
+    {
+        filtroEstado = estado;
+    }
+
+    private string ObtenerClaseEstado(EstadoMantenimiento estado)
+    {
+        return estado switch
+        {
+            EstadoMantenimiento.Programado => "bg-info",
+            EstadoMantenimiento.EnProceso => "bg-warning",
+            EstadoMantenimiento.Completado => "bg-success",
+            EstadoMantenimiento.Cancelado => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string ObtenerClaseTipo(TipoMantenimiento tipo)
+    {
+        return tipo switch
+        {
+            TipoMantenimiento.Preventivo => "bg-primary",
+            TipoMantenimiento.Correctivo => "bg-warning",
+            TipoMantenimiento.RevisionTecnica => "bg-info",
+            TipoMantenimiento.CambioAceite => "bg-secondary",
+            TipoMantenimiento.CambioNeumaticos => "bg-dark",
+            TipoMantenimiento.Reparacion => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}

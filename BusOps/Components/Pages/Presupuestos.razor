@@ -1,0 +1,1300 @@
+@page "/presupuestos"
+@using BusOps.Models
+@using BusOps.Helpers
+@using BusOps.Data
+@using BusOps.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject EmailService EmailService
+@inject PresupuestoPdfService PresupuestoPdfService
+@rendermode InteractiveServer
+
+<PageTitle>BusOps - Presupuestos</PageTitle>
+
+<div class="mb-3 d-flex justify-content-between align-items-center">
+    <button class="btn" style="background-color: #4CAF50; color: white;" data-bs-toggle="modal" data-bs-target="#presupuestoModal" @onclick="MostrarFormularioNuevo">
+        <i class="bi bi-plus-circle"></i> Nuevo Presupuesto
+    </button>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <input type="text" class="form-control" placeholder="Buscar por número o cliente..." @bind="busqueda" @bind:event="oninput" />
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="filtroEstado">
+                    <option value="">Todos los estados</option>
+                    <option value="Borrador">Borrador</option>
+                    <option value="Enviado">Enviado</option>
+                    <option value="Aceptado">Aceptado</option>
+                    <option value="Rechazado">Rechazado</option>
+                    <option value="Facturado">Facturado</option>
+                    <option value="Caducado">Caducado</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="date" class="form-control" @bind="filtroFechaDesde" />
+            </div>
+            <div class="col-md-3">
+                <input type="date" class="form-control" @bind="filtroFechaHasta" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Presupuesto -->
+<div class="modal fade" id="presupuestoModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #4CAF50;">
+                <h5 class="modal-title">@(presupuestoSeleccionado.Id == 0 ? "Nuevo Presupuesto" : "Editar Presupuesto")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-between">
+                    <div class="d-flex gap-2">
+                        @if (presupuestoSeleccionado.Id > 0)
+                        {
+                            <button type="button" class="btn btn-success" @onclick="() => EnviarPresupuestoPorEmail(presupuestoSeleccionado)">
+                                <i class="bi bi-envelope-fill"></i> Enviar Email
+                            </button>
+                            <button type="button" class="btn btn-info" @onclick="() => ImprimirPresupuesto(presupuestoSeleccionado)">
+                                <img src="/print.png" alt="Imprimir" style="height: 16px; width: 16px; object-fit: contain; filter: brightness(0) invert(1);" /> Imprimir
+                            </button>
+                            @if (presupuestoSeleccionado.Estado == EstadoPresupuesto.Aceptado && !presupuestoSeleccionado.FacturaId.HasValue)
+                            {
+                                <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="() => ConvertirAFactura(presupuestoSeleccionado.Id)">
+                                    <i class="bi bi-receipt"></i> Facturar
+                                </button>
+                            }
+                        }
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </button>
+                        <button type="button" class="btn" style="background-color: #4CAF50; color: white;" @onclick="GuardarPresupuesto">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Número de Presupuesto *</label>
+                        <input type="text" class="form-control" @bind="presupuestoSeleccionado!.NumeroPresupuesto" placeholder="PRES-2026-001" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Fecha Emisión *</label>
+                        <input type="date" class="form-control" @bind="presupuestoSeleccionado!.FechaEmision" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Fecha Validez</label>
+                        <input type="date" class="form-control" @bind="presupuestoSeleccionado!.FechaValidez" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Cliente *</label>
+                        <select class="form-select" @bind="presupuestoSeleccionado!.ClienteId">
+                            <option value="0">Seleccione un cliente</option>
+                            @foreach (var cliente in clientes)
+                            {
+                                <option value="@cliente.Id">
+                                    @if (cliente.Tipo == TipoCliente.Particular)
+                                    {
+                                        @($"{cliente.Nombre} {cliente.Apellidos}")
+                                    }
+                                    else
+                                    {
+                                        @cliente.NombreEmpresa
+                                    }
+                                </option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Estado *</label>
+                        <select class="form-select" @bind="presupuestoSeleccionado!.Estado">
+                            <option value="@EstadoPresupuesto.Borrador">Borrador</option>
+                            <option value="@EstadoPresupuesto.Enviado">Enviado</option>
+                            <option value="@EstadoPresupuesto.Aceptado">Aceptado</option>
+                            <option value="@EstadoPresupuesto.Rechazado">Rechazado</option>
+                            <option value="@EstadoPresupuesto.Facturado">Facturado</option>
+                            <option value="@EstadoPresupuesto.Caducado">Caducado</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">IVA (%)</label>
+                        <input type="number" step="0.01" class="form-control" @bind="presupuestoSeleccionado!.PorcentajeIVA" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-9 mb-3">
+                        <label class="form-label">Concepto</label>
+                        <input type="text" class="form-control" @bind="presupuestoSeleccionado!.Concepto" placeholder="Servicio de transporte..." />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Importe (€)</label>
+                        <input type="number" step="0.01" class="form-control" @bind="presupuestoSeleccionado!.ImporteConcepto" @bind:after="CalcularTotal" placeholder="0.00" />
+                    </div>
+                </div>
+
+                <!-- Cargos / Servicios -->
+                <hr />
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Servicios / Cargos Adicionales</h6>
+                    <button type="button" class="btn btn-sm btn-success" @onclick="AgregarLineaPresupuesto">
+                        <i class="bi bi-plus-circle"></i> Agregar Línea
+                    </button>
+                </div>
+
+                @if (lineasPresupuesto != null && lineasPresupuesto.Any())
+                {
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 10%;">Tipo</th>
+                                    <th style="width: 35%;">Descripción</th>
+                                    <th style="width: 15%;">Cantidad</th>
+                                    <th style="width: 15%;">Precio Unit.</th>
+                                    <th style="width: 15%;">Subtotal</th>
+                                    <th style="width: 10%;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var linea in lineasPresupuesto)
+                                {
+                                    <tr>
+                                        <td>
+                                            <select class="form-select form-select-sm" @bind="linea.Tipo">
+                                                <option value="@TipoLineaPresupuesto.Servicio">Servicio</option>
+                                                <option value="@TipoLineaPresupuesto.CargoAdicional">Cargo</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control form-control-sm" @bind="linea.Descripcion" placeholder="Descripción..." />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm" @bind="linea.Cantidad" @bind:after="() => CalcularSubtotalLinea(linea)" min="1" />
+                                        </td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control form-control-sm" @bind="linea.PrecioUnitario" @bind:after="() => CalcularSubtotalLinea(linea)" />
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control form-control-sm" value="@linea.Subtotal.ToString("N2")" readonly style="background-color: #f8f9fa;" />
+                                        </td>
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-danger" @onclick="() => EliminarLineaPresupuesto(linea)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info">
+                        <small>No hay líneas añadidas. Haga clic en "Agregar Línea" para añadir servicios o cargos adicionales.</small>
+                    </div>
+                }
+
+                <hr />
+                
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Base Imponible</label>
+                        <input type="text" class="form-control" value="@presupuestoSeleccionado!.BaseImponible.ToString("N2")" readonly style="background-color: #f8f9fa;" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">IVA (@presupuestoSeleccionado!.PorcentajeIVA%)</label>
+                        <input type="text" class="form-control" value="@presupuestoSeleccionado!.ImporteIVA.ToString("N2")" readonly style="background-color: #f8f9fa;" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold">Total</label>
+                        <input type="text" class="form-control fw-bold" value="@presupuestoSeleccionado!.Total.ToString("N2")" readonly style="font-size: 1.1rem; background-color: #e8f5e9;" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Retención IRPF (%)</label>
+                        <input type="number" step="0.01" class="form-control" @bind="presupuestoSeleccionado!.PorcentajeRetencion" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                        <small class="text-muted">Retención aplicable (opcional)</small>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Importe Retención (€)</label>
+                        <input type="number" step="0.01" class="form-control" @bind="presupuestoSeleccionado!.ImporteRetencion" readonly />
+                    </div>
+                </div>
+                <div class="alert alert-info mb-3" role="alert">
+                    <small>
+                        <strong>Cálculo:</strong> Base (@presupuestoSeleccionado!.BaseImponible.ToString("C2")) + IVA (@presupuestoSeleccionado!.ImporteIVA.ToString("C2")) - Retención (@presupuestoSeleccionado!.ImporteRetencion.ToString("C2")) = <strong>@presupuestoSeleccionado!.Total.ToString("C2")</strong>
+                    </small>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Observaciones</label>
+                        <textarea class="form-control" rows="3" @bind="presupuestoSeleccionado!.Observaciones"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lista de presupuestos -->
+<div class="card">
+    <div class="card-header">
+        <h5>Lista de Presupuestos</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Número</th>
+                        <th>Cliente</th>
+                        <th>Fecha Emisión</th>
+                        <th>Validez</th>
+                        <th>Base</th>
+                        <th>IVA</th>
+                        <th>Total</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var presupuesto in PresupuestosFiltrados)
+                    {
+                        <tr>
+                            <td><strong>@presupuesto.NumeroPresupuesto</strong></td>
+                            <td>
+                                @{
+                                    var cliente = clientes.FirstOrDefault(c => c.Id == presupuesto.ClienteId);
+                                    if (cliente != null)
+                                    {
+                                        if (cliente.Tipo == TipoCliente.Particular)
+                                        {
+                                            @($"{cliente.Nombre} {cliente.Apellidos}")
+                                        }
+                                        else
+                                        {
+                                            @cliente.NombreEmpresa
+                                        }
+                                    }
+                                }
+                            </td>
+                            <td>@presupuesto.FechaEmision.ToShortDateString()</td>
+                            <td>@(presupuesto.FechaValidez?.ToShortDateString() ?? "-")</td>
+                            <td>@presupuesto.BaseImponible.ToString("C")</td>
+                            <td>@presupuesto.ImporteIVA.ToString("C")</td>
+                            <td><strong>@presupuesto.Total.ToString("C")</strong></td>
+                            <td>
+                                <span class="badge @ObtenerClaseEstado(presupuesto.Estado)">
+                                    @presupuesto.Estado.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-success me-1" @onclick="() => EnviarPresupuestoPorEmail(presupuesto)" title="Enviar por Email">
+                                    <i class="bi bi-envelope-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => ImprimirPresupuesto(presupuesto)">
+                                    <img src="/print.png" alt="Imprimir" style="height: 14px; width: 14px; object-fit: contain;" />
+                                </button>
+                                @if (presupuesto.Estado == EstadoPresupuesto.Aceptado && !presupuesto.FacturaId.HasValue)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => ConvertirAFactura(presupuesto.Id)" title="Convertir a Factura">
+                                        <i class="bi bi-receipt"></i>
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditarPresupuesto(presupuesto)" title="Editar">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarPresupuesto(presupuesto.Id)" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Estadísticas / Análisis -->
+<div class="mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5>Estadísticas</h5>
+        <div class="btn-group" role="group">
+            <button type="button" class="btn @(vistaAnalisis == "tarjetas" ? "btn-primary" : "btn-outline-primary")" @onclick='() => vistaAnalisis = "tarjetas"'>
+                <i class="bi bi-card-list"></i> Tarjetas
+            </button>
+            <button type="button" class="btn @(vistaAnalisis == "graficos" ? "btn-primary" : "btn-outline-primary")" @onclick='() => vistaAnalisis = "graficos"'>
+                <i class="bi bi-bar-chart-fill"></i> Gráficos
+            </button>
+        </div>
+    </div>
+
+    @if (vistaAnalisis == "tarjetas")
+    {
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card text-white" style="background-color: #4CAF50;">
+                    <div class="card-body">
+                        <h6>Total Presupuestado</h6>
+                        <h3>@presupuestos.Sum(p => p.Total).ToString("C")</h3>
+                        <small>@presupuestos.Count presupuestos</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h6>Aceptados</h6>
+                        <h3>@presupuestos.Where(p => p.Estado == EstadoPresupuesto.Aceptado).Sum(p => p.Total).ToString("C")</h3>
+                        <small>@presupuestos.Count(p => p.Estado == EstadoPresupuesto.Aceptado) presupuestos</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <h6>Pendientes</h6>
+                        <h3>@presupuestos.Where(p => p.Estado == EstadoPresupuesto.Enviado || p.Estado == EstadoPresupuesto.Borrador).Sum(p => p.Total).ToString("C")</h3>
+                        <small>@presupuestos.Count(p => p.Estado == EstadoPresupuesto.Enviado || p.Estado == EstadoPresupuesto.Borrador) presupuestos</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h6>Facturados</h6>
+                        <h3>@presupuestos.Where(p => p.Estado == EstadoPresupuesto.Facturado).Sum(p => p.Total).ToString("C")</h3>
+                        <small>@presupuestos.Count(p => p.Estado == EstadoPresupuesto.Facturado) presupuestos</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Presupuestos por Estado</h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartEstados" style="max-height: 300px;"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Evolución Mensual</h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartMensual" style="max-height: 300px;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (presupuestoImprimir != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header text-white" style="background-color: #4CAF50;">
+                    <h5 class="modal-title">Vista Previa de Presupuesto</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarVistaPrevia"></button>
+                </div>
+                <div class="modal-body" id="presupuestoImprimible">
+                    @* Vista de impresión del presupuesto *@
+                    <div class="p-5" style="background-color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                        <!-- Encabezado con logo y datos empresa / cliente -->
+                        <div class="row mb-5">
+                            <!-- Datos de la empresa (izquierda) -->
+                            <div class="col-6">
+                                @if (!string.IsNullOrEmpty(logoEmpresa))
+                                {
+                                    <img src="@logoEmpresa" alt="Logo Empresa" style="max-height: 100px; max-width: 250px; margin-bottom: 20px;" />
+                                }
+                                <div style="border-left: 4px solid #4CAF50; padding-left: 15px;">
+                                    <h3 style="color: #4CAF50; margin-bottom: 15px;">@(configuracionEmpresa?.NombreEmpresa ?? "BusOps Transportes S.L.")</h3>
+                                    <p class="mb-1" style="color: #666;">@(configuracionEmpresa?.Direccion ?? "Calle Principal 123")</p>
+                                    <p class="mb-1" style="color: #666;">@(configuracionEmpresa?.CodigoPostal ?? "28001") @(configuracionEmpresa?.Ciudad ?? "Madrid"), @(configuracionEmpresa?.Provincia ?? "Madrid")</p>
+                                    <p class="mb-1" style="color: #666;"><strong>NIF:</strong> @(configuracionEmpresa?.NIF ?? "B12345678")</p>
+                                    <p class="mb-1" style="color: #666;"><strong>Tel:</strong> @(configuracionEmpresa?.Telefono ?? "910123456")</p>
+                                    @if (!string.IsNullOrEmpty(configuracionEmpresa?.Email))
+                                    {
+                                        <p class="mb-1" style="color: #666;"><strong>Email:</strong> @configuracionEmpresa.Email</p>
+                                    }
+                                    @if (!string.IsNullOrEmpty(configuracionEmpresa?.Web))
+                                    {
+                                        <p class="mb-1" style="color: #666;"><strong>Web:</strong> @configuracionEmpresa.Web</p>
+                                    }
+                                </div>
+                            </div>
+                            
+                            <!-- Datos del cliente (derecha) -->
+                            <div class="col-6">
+                                <div style="background-color: #4CAF50; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                                    <h2 class="mb-0">PRESUPUESTO</h2>
+                                    <h4>@presupuestoImprimir.NumeroPresupuesto</h4>
+                                </div>
+                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                    <h5 style="color: #4CAF50; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; margin-bottom: 15px;">DATOS DEL CLIENTE</h5>
+                                    @{
+                                        var cliente = clientes.FirstOrDefault(c => c.Id == presupuestoImprimir.ClienteId);
+                                        if (cliente != null)
+                                        {
+                                            if (cliente.Tipo == TipoCliente.Particular)
+                                            {
+                                                <p class="mb-2"><strong style="color: #4CAF50;">@cliente.Nombre @cliente.Apellidos</strong></p>
+                                            }
+                                            else
+                                            {
+                                                <p class="mb-2"><strong style="color: #4CAF50;">@cliente.NombreEmpresa</strong></p>
+                                                if (!string.IsNullOrEmpty(cliente.Nombre))
+                                                {
+                                                    <p class="mb-1" style="font-size: 0.9em;">Att: @cliente.Nombre</p>
+                                                }
+                                            }
+                                            <p class="mb-1" style="font-size: 0.9em;"><strong>NIF/CIF:</strong> @cliente.NIF</p>
+                                            if (!string.IsNullOrEmpty(cliente.Direccion))
+                                            {
+                                                <p class="mb-1" style="font-size: 0.9em;">@cliente.Direccion</p>
+                                            }
+                                            if (!string.IsNullOrEmpty(cliente.CodigoPostal) || !string.IsNullOrEmpty(cliente.Ciudad))
+                                            {
+                                                <p class="mb-1" style="font-size: 0.9em;">@cliente.CodigoPostal @cliente.Ciudad</p>
+                                            }
+                                            if (!string.IsNullOrEmpty(cliente.Telefono))
+                                            {
+                                                <p class="mb-1" style="font-size: 0.9em;"><strong>Tel:</strong> @cliente.Telefono</p>
+                                            }
+                                            if (!string.IsNullOrEmpty(cliente.Email))
+                                            {
+                                                <p class="mb-1" style="font-size: 0.9em;"><strong>Email:</strong> @cliente.Email</p>
+                                            }
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Información del presupuesto -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between;">
+                                    <div><strong>Fecha de Emisión:</strong> @presupuestoImprimir.FechaEmision.ToString("dd/MM/yyyy")</div>
+                                    <div><strong>Válido hasta:</strong> @(presupuestoImprimir.FechaValidez?.ToString("dd/MM/yyyy") ?? "N/A")</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(presupuestoImprimir.Concepto))
+                        {
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <div style="border-left: 4px solid #FFC107; padding-left: 15px; background-color: #fffbf0; padding: 15px; border-radius: 4px;">
+                                        <p class="mb-0"><strong>Concepto:</strong> @presupuestoImprimir.Concepto</p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Tabla de líneas/servicios -->
+                        <table class="table table-hover" style="border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+                            <thead style="background-color: #4CAF50; color: white;">
+                                <tr>
+                                    <th style="padding: 15px;">Descripción</th>
+                                    <th class="text-center" style="padding: 15px; width: 100px;">Cantidad</th>
+                                    <th class="text-end" style="padding: 15px; width: 150px;">Precio Unit.</th>
+                                    <th class="text-end" style="padding: 15px; width: 150px;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var linea in presupuestoImprimir.Lineas)
+                                {
+                                    <tr style="border-bottom: 1px solid #dee2e6;">
+                                        <td style="padding: 12px;">
+                                            <strong>@linea.Descripcion</strong>
+                                            @if (linea.Tipo == TipoLineaPresupuesto.CargoAdicional)
+                                            {
+                                                <span class="badge bg-warning text-dark ms-2" style="font-size: 0.7em;">Cargo Adicional</span>
+                                            }
+                                        </td>
+                                        <td class="text-center" style="padding: 12px;">@linea.Cantidad</td>
+                                        <td class="text-end" style="padding: 12px;">@linea.PrecioUnitario.ToString("C2")</td>
+                                        <td class="text-end" style="padding: 12px;"><strong>@linea.Subtotal.ToString("C2")</strong></td>
+                                    </tr>
+                                }
+                                
+                                @if (presupuestoImprimir.ImporteConcepto > 0)
+                                {
+                                    <tr style="border-bottom: 1px solid #dee2e6; background-color: #fffbf0;">
+                                        <td style="padding: 12px;" colspan="3">
+                                            <strong>@presupuestoImprimir.Concepto</strong>
+                                            <span class="badge bg-info text-dark ms-2" style="font-size: 0.7em;">Concepto Especial</span>
+                                        </td>
+                                        <td class="text-end" style="padding: 12px;"><strong>@presupuestoImprimir.ImporteConcepto.ToString("C2")</strong></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+
+                        <!-- Totales -->
+                        <div class="row mt-4">
+                            <div class="col-7"></div>
+                            <div class="col-5">
+                                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                    <table class="table table-borderless mb-0">
+                                        <tr>
+                                            <td style="padding: 8px;"><strong>Base Imponible:</strong></td>
+                                            <td class="text-end" style="padding: 8px; font-size: 1.1em;">@presupuestoImprimir.BaseImponible.ToString("C2")</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 8px;"><strong>IVA (@presupuestoImprimir.PorcentajeIVA%):</strong></td>
+                                            <td class="text-end" style="padding: 8px; font-size: 1.1em;">@presupuestoImprimir.ImporteIVA.ToString("C2")</td>
+                                        </tr>
+                                        @if (presupuestoImprimir.PorcentajeRetencion > 0)
+                                        {
+                                            <tr>
+                                                <td style="padding: 8px; color: #dc3545;"><strong>Retención (@presupuestoImprimir.PorcentajeRetencion%):</strong></td>
+                                                <td class="text-end" style="padding: 8px; font-size: 1.1em; color: #dc3545;">-@presupuestoImprimir.ImporteRetencion.ToString("C2")</td>
+                                            </tr>
+                                        }
+                                        <tr style="border-top: 2px solid #4CAF50;">
+                                            <td style="padding: 12px;"><h4 class="mb-0" style="color: #4CAF50;">TOTAL:</h4></td>
+                                            <td class="text-end" style="padding: 12px;"><h4 class="mb-0" style="color: #4CAF50;">@presupuestoImprimir.Total.ToString("C2")</h4></td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(presupuestoImprimir.Observaciones))
+                        {
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <div style="border: 1px solid #dee2e6; padding: 15px; border-radius: 8px; background-color: #f8f9fa;">
+                                        <h6 style="color: #4CAF50; margin-bottom: 10px;">Observaciones:</h6>
+                                        <p class="mb-0" style="white-space: pre-wrap;">@presupuestoImprimir.Observaciones</p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Pie de página -->
+                        <div class="row mt-5">
+                            <div class="col-12 text-center" style="padding-top: 20px; border-top: 1px solid #dee2e6;">
+                                <p style="color: #666; font-size: 0.9em; margin-bottom: 5px;">
+                                    Gracias por confiar en @(configuracionEmpresa?.NombreEmpresa ?? "BusOps Transportes S.L.")
+                                </p>
+                                @if (!string.IsNullOrEmpty(configuracionEmpresa?.IBAN))
+                                {
+                                    <p style="color: #666; font-size: 0.85em; margin-bottom: 0;">
+                                        <strong>Datos bancarios:</strong> IBAN @configuracionEmpresa.IBAN
+                                    </p>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarVistaPrevia">Cerrar</button>
+                    <button type="button" class="btn btn-primary" @onclick="ImprimirAhora">
+                        <i class="bi bi-printer me-2"></i>Imprimir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Presupuesto> presupuestos = new();
+    private List<Cliente> clientes = new();
+    private Presupuesto presupuestoSeleccionado = new();
+    private List<LineaPresupuesto> lineasPresupuesto = new();
+    private string busqueda = string.Empty;
+    private string filtroEstado = string.Empty;
+    private DateTime? filtroFechaDesde;
+    private DateTime? filtroFechaHasta;
+    private ConfiguracionEmpresa? configuracionEmpresa;
+    private string logoEmpresa = string.Empty;
+    private string vistaAnalisis = "tarjetas";
+
+    private List<Presupuesto> PresupuestosFiltrados => presupuestos
+        .Where(p =>
+            (string.IsNullOrEmpty(busqueda) ||
+             p.NumeroPresupuesto.Contains(busqueda, StringComparison.OrdinalIgnoreCase)) &&
+            (string.IsNullOrEmpty(filtroEstado) || p.Estado.ToString() == filtroEstado) &&
+            (!filtroFechaDesde.HasValue || p.FechaEmision >= filtroFechaDesde.Value) &&
+            (!filtroFechaHasta.HasValue || p.FechaEmision <= filtroFechaHasta.Value))
+        .OrderByDescending(p => p.FechaEmision)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfiguracion();
+        await CargarDatos();
+    }
+
+    private async Task CargarConfiguracion()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        configuracionEmpresa = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+        if (configuracionEmpresa != null && !string.IsNullOrEmpty(configuracionEmpresa.LogoRuta))
+        {
+            logoEmpresa = configuracionEmpresa.LogoRuta;
+        }
+    }
+
+    private async Task CargarDatos()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        clientes = await context.Clientes.ToListAsync();
+        presupuestos = await context.Presupuestos.Include(p => p.Cliente).ToListAsync();
+    }
+
+    private async Task MostrarFormularioNuevo()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        // Obtener la configuración para la serie de presupuesto
+        var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+        string serie = "PRES";
+        
+        // Obtener el último número de presupuesto de este año
+        int anioActual = DateTime.Now.Year;
+        var ultimoPresupuesto = await context.Presupuestos
+            .Where(p => p.FechaEmision.Year == anioActual)
+            .OrderByDescending(p => p.Id)
+            .FirstOrDefaultAsync();
+        
+        int siguienteNumero = 1;
+        if (ultimoPresupuesto != null)
+        {
+            // Intentar extraer el número del último presupuesto
+            var partes = ultimoPresupuesto.NumeroPresupuesto.Split('-');
+            if (partes.Length >= 3 && int.TryParse(partes[2], out int numero))
+            {
+                siguienteNumero = numero + 1;
+            }
+        }
+        
+        // Generar el número de presupuesto: SERIE-AÑO-NÚMERO
+        string numeroPresupuesto = $"{serie}-{anioActual}-{siguienteNumero:D3}";
+        
+        // Obtener el IVA por defecto de la configuración
+        decimal ivaPorDefecto = config?.IVAPorDefecto ?? 21m;
+        
+        presupuestoSeleccionado = new Presupuesto
+        {
+            NumeroPresupuesto = numeroPresupuesto,
+            FechaEmision = DateTime.Now,
+            FechaValidez = DateTime.Now.AddDays(30),
+            PorcentajeIVA = ivaPorDefecto,
+            Estado = EstadoPresupuesto.Borrador
+        };
+        
+        lineasPresupuesto = new List<LineaPresupuesto>();
+    }
+
+    private async Task EditarPresupuesto(Presupuesto presupuesto)
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            var presupuestoDb = await context.Presupuestos
+                .Include(p => p.Cliente)
+                .Include(p => p.Lineas)
+                .FirstOrDefaultAsync(p => p.Id == presupuesto.Id);
+                
+            if (presupuestoDb != null)
+            {
+                presupuestoSeleccionado = new Presupuesto
+                {
+                    Id = presupuestoDb.Id,
+                    NumeroPresupuesto = presupuestoDb.NumeroPresupuesto,
+                    FechaEmision = presupuestoDb.FechaEmision,
+                    FechaValidez = presupuestoDb.FechaValidez,
+                    ClienteId = presupuestoDb.ClienteId,
+                    BaseImponible = presupuestoDb.BaseImponible,
+                    PorcentajeIVA = presupuestoDb.PorcentajeIVA,
+                    ImporteIVA = presupuestoDb.ImporteIVA,
+                    PorcentajeRetencion = presupuestoDb.PorcentajeRetencion,
+                    ImporteRetencion = presupuestoDb.ImporteRetencion,
+                    Total = presupuestoDb.Total,
+                    Estado = presupuestoDb.Estado,
+                    Concepto = presupuestoDb.Concepto,
+                    ImporteConcepto = presupuestoDb.ImporteConcepto,
+                    Observaciones = presupuestoDb.Observaciones,
+                    FacturaId = presupuestoDb.FacturaId
+                };
+                
+                // Cargar líneas de presupuesto
+                lineasPresupuesto = presupuestoDb.Lineas.Select(l => new LineaPresupuesto
+                {
+                    Id = l.Id,
+                    PresupuestoId = l.PresupuestoId,
+                    Descripcion = l.Descripcion,
+                    Cantidad = l.Cantidad,
+                    PrecioUnitario = l.PrecioUnitario,
+                    Subtotal = l.Subtotal,
+                    Tipo = l.Tipo,
+                    ViajeId = l.ViajeId
+                }).ToList();
+                
+                // Abrir el modal después de cargar los datos
+                StateHasChanged();
+                await Task.Delay(200);
+                
+                var script = @"
+                    var modal = document.getElementById('presupuestoModal');
+                    if (modal) {
+                        var bsModal = new bootstrap.Modal(modal);
+                        bsModal.show();
+                    } else {
+                        console.error('Modal presupuestoModal no encontrado');
+                    }
+                ";
+                await JSRuntime.InvokeVoidAsync("eval", script);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al editar presupuesto: {ex.Message}");
+        }
+    }
+    
+    private void AgregarLineaPresupuesto()
+    {
+        if (lineasPresupuesto == null)
+        {
+            lineasPresupuesto = new List<LineaPresupuesto>();
+        }
+        
+        lineasPresupuesto.Add(new LineaPresupuesto
+        {
+            Cantidad = 1,
+            PrecioUnitario = 0,
+            Subtotal = 0,
+            Tipo = TipoLineaPresupuesto.Servicio
+        });
+        
+        StateHasChanged();
+    }
+    
+    private void EliminarLineaPresupuesto(LineaPresupuesto linea)
+    {
+        lineasPresupuesto.Remove(linea);
+        CalcularTotal();
+        StateHasChanged();
+    }
+    
+    private void CalcularSubtotalLinea(LineaPresupuesto linea)
+    {
+        linea.Subtotal = linea.Cantidad * linea.PrecioUnitario;
+        CalcularTotal();
+    }
+
+    private void CalcularTotal()
+    {
+        // Calcular base imponible como suma de todas las líneas + importe del concepto
+        decimal sumaLineas = lineasPresupuesto?.Sum(l => l.Subtotal) ?? 0m;
+        presupuestoSeleccionado.BaseImponible = sumaLineas + presupuestoSeleccionado.ImporteConcepto;
+        
+        // Calcular IVA
+        presupuestoSeleccionado.ImporteIVA = presupuestoSeleccionado.BaseImponible * (presupuestoSeleccionado.PorcentajeIVA / 100);
+        
+        // Calcular retención
+        presupuestoSeleccionado.ImporteRetencion = presupuestoSeleccionado.BaseImponible * (presupuestoSeleccionado.PorcentajeRetencion / 100);
+        
+        // Calcular total: Base + IVA - Retención
+        presupuestoSeleccionado.Total = presupuestoSeleccionado.BaseImponible + presupuestoSeleccionado.ImporteIVA - presupuestoSeleccionado.ImporteRetencion;
+    }
+
+    private async Task GuardarPresupuesto()
+    {
+        CalcularTotal();
+        
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (presupuestoSeleccionado.Id == 0)
+        {
+            // Nuevo presupuesto
+            context.Presupuestos.Add(presupuestoSeleccionado);
+            await context.SaveChangesAsync();
+            
+            // Agregar líneas de presupuesto
+            foreach (var linea in lineasPresupuesto)
+            {
+                linea.PresupuestoId = presupuestoSeleccionado.Id;
+                context.LineasPresupuesto.Add(linea);
+            }
+        }
+        else
+        {
+            // Actualizar presupuesto existente
+            context.Presupuestos.Update(presupuestoSeleccionado);
+            
+            // Eliminar líneas antiguas
+            var lineasAntiguas = await context.LineasPresupuesto.Where(l => l.PresupuestoId == presupuestoSeleccionado.Id).ToListAsync();
+            context.LineasPresupuesto.RemoveRange(lineasAntiguas);
+            
+            // Agregar nuevas líneas
+            foreach (var linea in lineasPresupuesto)
+            {
+                linea.Id = 0; // Reset ID para crear nuevas líneas
+                linea.PresupuestoId = presupuestoSeleccionado.Id;
+                context.LineasPresupuesto.Add(linea);
+            }
+        }
+        
+        await context.SaveChangesAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('presupuestoModal')).hide()");
+        
+        await CargarDatos();
+        presupuestoSeleccionado = new();
+        lineasPresupuesto = new();
+        StateHasChanged();
+    }
+
+    private async Task EliminarPresupuesto(int id)
+    {
+        var confirmacion = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este presupuesto?");
+        if (!confirmacion) return;
+        
+        using var context = await DbFactory.CreateDbContextAsync();
+        var presupuesto = await context.Presupuestos.FindAsync(id);
+        if (presupuesto != null)
+        {
+            context.Presupuestos.Remove(presupuesto);
+            await context.SaveChangesAsync();
+            await CargarDatos();
+            StateHasChanged();
+        }
+    }
+
+    private string ObtenerClaseEstado(EstadoPresupuesto estado)
+    {
+        return estado switch
+        {
+            EstadoPresupuesto.Borrador => "bg-secondary",
+            EstadoPresupuesto.Enviado => "bg-primary",
+            EstadoPresupuesto.Aceptado => "bg-success",
+            EstadoPresupuesto.Rechazado => "bg-danger",
+            EstadoPresupuesto.Facturado => "bg-info",
+            EstadoPresupuesto.Caducado => "bg-dark",
+            _ => "bg-secondary"
+        };
+    }
+
+    private Presupuesto? presupuestoImprimir;
+
+    private void ImprimirPresupuesto(Presupuesto presupuesto)
+    {
+        presupuestoImprimir = presupuesto;
+    }
+
+    private void CerrarVistaPrevia()
+    {
+        presupuestoImprimir = null;
+    }
+
+    private async Task ImprimirAhora()
+    {
+        var script = @"
+var contenido = document.getElementById('presupuestoImprimible').innerHTML;
+var ventana = window.open('', '', 'height=900,width=900');
+ventana.document.write('<html><head><title>Presupuesto</title>');
+ventana.document.write('<link href=""https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"" rel=""stylesheet"">');
+ventana.document.write('<style>');
+ventana.document.write('body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }');
+ventana.document.write('.table { width: 100%; margin-bottom: 1rem; color: #212529; border-collapse: collapse; }');
+ventana.document.write('.table th, .table td { padding: 0.75rem; vertical-align: top; border-top: 1px solid #dee2e6; }');
+ventana.document.write('.table thead th { vertical-align: bottom; border-bottom: 2px solid #dee2e6; }');
+ventana.document.write('.table-bordered { border: 1px solid #dee2e6; }');
+ventana.document.write('.table-bordered th, .table-bordered td { border: 1px solid #dee2e6; }');
+ventana.document.write('.table-light { background-color: #f8f9fa; }');
+ventana.document.write('.table-dark { background-color: #343a40; color: white; }');
+ventana.document.write('.text-end { text-align: right; }');
+ventana.document.write('.row { display: flex; flex-wrap: wrap; margin-right: -15px; margin-left: -15px; }');
+ventana.document.write('.col-6 { flex: 0 0 50%; max-width: 50%; padding-right: 15px; padding-left: 15px; }');
+ventana.document.write('.col-12 { flex: 0 0 100%; max-width: 100%; padding-right: 15px; padding-left: 15px; }');
+ventana.document.write('.mb-1 { margin-bottom: 0.25rem; }');
+ventana.document.write('.mb-4 { margin-bottom: 1.5rem; }');
+ventana.document.write('.mt-3 { margin-top: 1rem; }');
+ventana.document.write('.p-4 { padding: 1.5rem; }');
+ventana.document.write('h2 { font-size: 2rem; margin-bottom: 0.5rem; }');
+ventana.document.write('h3 { font-size: 1.75rem; margin-bottom: 0.5rem; }');
+ventana.document.write('h5 { font-size: 1.25rem; margin-bottom: 0.5rem; }');
+ventana.document.write('@media print {');
+ventana.document.write('  body { padding: 0; }');
+ventana.document.write('  .no-print { display: none; }');
+ventana.document.write('}');
+ventana.document.write('</style>');
+ventana.document.write('</head><body>');
+ventana.document.write(contenido);
+ventana.document.write('</body></html>');
+ventana.document.close();
+setTimeout(() => { ventana.print(); }, 250);
+";
+        await JSRuntime.InvokeVoidAsync("eval", script);
+    }
+
+    private async Task EnviarPresupuestoPorEmail(Presupuesto presupuesto)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var presupuestoCompleto = await context.Presupuestos
+            .Include(p => p.Cliente)
+            .Include(p => p.Lineas)
+            .FirstOrDefaultAsync(p => p.Id == presupuesto.Id);
+
+        if (presupuestoCompleto?.Cliente == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No se puede enviar: el cliente no tiene email configurado.");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(presupuestoCompleto.Cliente.Email))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"El cliente no tiene email configurado.");
+            return;
+        }
+
+        // Obtener configuración de empresa
+        var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+        
+        // Construir el nombre del cliente
+        string nombreCliente = presupuestoCompleto.Cliente.Tipo == TipoCliente.Particular
+            ? $"{presupuestoCompleto.Cliente.Nombre} {presupuestoCompleto.Cliente.Apellidos}"
+            : presupuestoCompleto.Cliente.NombreEmpresa ?? "";
+
+        // Crear el cuerpo del email en HTML
+        string cuerpoEmail = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+        .presupuesto-info { background-color: white; padding: 15px; margin: 15px 0; border-left: 4px solid #4CAF50; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>" + (config?.NombreEmpresa ?? "BusOps Transportes") + @"</h1>
+        </div>
+        <div class='content'>
+            <h2>Estimado/a " + nombreCliente + @",</h2>
+            <p>Adjunto encontrará el presupuesto solicitado con los siguientes detalles:</p>
+            
+            <div class='presupuesto-info'>
+                <p><strong>Número de Presupuesto:</strong> " + presupuestoCompleto.NumeroPresupuesto + @"</p>
+                <p><strong>Fecha de Emisión:</strong> " + presupuestoCompleto.FechaEmision.ToString("dd/MM/yyyy") + @"</p>
+                <p><strong>Válido hasta:</strong> " + (presupuestoCompleto.FechaValidez?.ToString("dd/MM/yyyy") ?? "N/A") + @"</p>
+                <p><strong>Importe Total:</strong> " + presupuestoCompleto.Total.ToString("C2") + @"</p>
+            </div>
+            
+            <p>Le agradecemos su interés en nuestros servicios.</p>
+            <p>Para cualquier consulta o aceptación del presupuesto, no dude en contactarnos.</p>
+        </div>
+        <div class='footer'>
+            <p>" + (config?.NombreEmpresa ?? "BusOps Transportes S.L.") + @"</p>
+            <p>" + (config?.Direccion ?? "") + @" | Tel: " + (config?.Telefono ?? "") + @"</p>
+            <p>Email: " + (config?.Email ?? "") + @"</p>
+        </div>
+    </div>
+</body>
+</html>";
+
+        // Generar el PDF del presupuesto
+        byte[] pdfPresupuesto = PresupuestoPdfService.GenerarPresupuestoPdf(presupuestoCompleto, presupuestoCompleto.Cliente, config);
+
+        // Enviar el email con el PDF adjunto
+        bool enviado = await EmailService.EnviarPresupuestoPorEmailAsync(
+            presupuestoCompleto.Cliente.Email,
+            $"Presupuesto {presupuestoCompleto.NumeroPresupuesto} - {config?.NombreEmpresa ?? "BusOps"}",
+            cuerpoEmail,
+            pdfPresupuesto,
+            $"Presupuesto_{presupuestoCompleto.NumeroPresupuesto}.pdf"
+        );
+
+        if (enviado)
+        {
+            // Actualizar el estado del presupuesto a "Enviado"
+            presupuestoCompleto.Estado = EstadoPresupuesto.Enviado;
+            context.Presupuestos.Update(presupuestoCompleto);
+            await context.SaveChangesAsync();
+            await CargarDatos();
+            
+            await JSRuntime.InvokeVoidAsync("alert", $"Presupuesto enviado correctamente a {presupuestoCompleto.Cliente.Email}");
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error al enviar el email. Verifique la configuración.");
+        }
+    }
+
+    private async Task ConvertirAFactura(int presupuestoId)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        // Obtener el presupuesto completo con sus líneas
+        var presupuesto = await context.Presupuestos
+            .Include(p => p.Lineas)
+            .FirstOrDefaultAsync(p => p.Id == presupuestoId);
+
+        if (presupuesto == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Presupuesto no encontrado.");
+            return;
+        }
+
+        // Verificar que el presupuesto está en estado Aceptado
+        if (presupuesto.Estado != EstadoPresupuesto.Aceptado)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Solo se pueden facturar presupuestos en estado 'Aceptado'.");
+            return;
+        }
+
+        // Verificar que no se haya facturado ya
+        if (presupuesto.FacturaId.HasValue)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Este presupuesto ya ha sido facturado.");
+            return;
+        }
+
+        // Confirmar con el usuario
+        var confirmacion = await JSRuntime.InvokeAsync<bool>("confirm", $"¿Desea convertir el presupuesto {presupuesto.NumeroPresupuesto} en factura?");
+        if (!confirmacion) return;
+
+        try
+        {
+            // Obtener configuración para generar número de factura
+            var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+            string serie = config?.SerieFactura ?? "FAC";
+            
+            // Obtener el último número de factura de este año
+            int anioActual = DateTime.Now.Year;
+            var ultimaFactura = await context.Facturas
+                .Where(f => f.FechaEmision.Year == anioActual)
+                .OrderByDescending(f => f.Id)
+                .FirstOrDefaultAsync();
+            
+            int siguienteNumero = 1;
+            if (ultimaFactura != null)
+            {
+                var partes = ultimaFactura.NumeroFactura.Split('-');
+                if (partes.Length >= 3 && int.TryParse(partes[2], out int numero))
+                {
+                    siguienteNumero = numero + 1;
+                }
+            }
+            
+            string numeroFactura = $"{serie}-{anioActual}-{siguienteNumero:D3}";
+
+            // Crear la nueva factura copiando datos del presupuesto
+            var nuevaFactura = new Factura
+            {
+                NumeroFactura = numeroFactura,
+                FechaEmision = DateTime.Now,
+                FechaVencimiento = DateTime.Now.AddDays(30),
+                ClienteId = presupuesto.ClienteId,
+                BaseImponible = presupuesto.BaseImponible,
+                PorcentajeIVA = presupuesto.PorcentajeIVA,
+                ImporteIVA = presupuesto.ImporteIVA,
+                PorcentajeRetencion = presupuesto.PorcentajeRetencion,
+                ImporteRetencion = presupuesto.ImporteRetencion,
+                Total = presupuesto.Total,
+                Estado = EstadoFactura.Emitida,
+                Concepto = presupuesto.Concepto,
+                ImporteConcepto = presupuesto.ImporteConcepto,
+                Observaciones = $"Factura generada desde presupuesto {presupuesto.NumeroPresupuesto}\n{presupuesto.Observaciones}"
+            };
+
+            // Agregar la factura
+            context.Facturas.Add(nuevaFactura);
+            await context.SaveChangesAsync();
+
+            // Copiar las líneas del presupuesto a la factura
+            foreach (var lineaPresupuesto in presupuesto.Lineas)
+            {
+                var lineaFactura = new LineaFactura
+                {
+                    FacturaId = nuevaFactura.Id,
+                    Descripcion = lineaPresupuesto.Descripcion,
+                    Cantidad = lineaPresupuesto.Cantidad,
+                    PrecioUnitario = lineaPresupuesto.PrecioUnitario,
+                    Subtotal = lineaPresupuesto.Subtotal,
+                    Tipo = (TipoLineaFactura)(int)lineaPresupuesto.Tipo, // Conversión de enum
+                    ViajeId = lineaPresupuesto.ViajeId
+                };
+                context.LineasFactura.Add(lineaFactura);
+            }
+
+            // Actualizar el presupuesto
+            presupuesto.FacturaId = nuevaFactura.Id;
+            presupuesto.Estado = EstadoPresupuesto.Facturado;
+            context.Presupuestos.Update(presupuesto);
+
+            // Guardar todos los cambios
+            await context.SaveChangesAsync();
+
+            await JSRuntime.InvokeVoidAsync("alert", $"Presupuesto convertido exitosamente a factura {numeroFactura}");
+            
+            // Recargar datos y cerrar modal si está abierto
+            await CargarDatos();
+            await JSRuntime.InvokeVoidAsync("eval", "var modal = bootstrap.Modal.getInstance(document.getElementById('presupuestoModal')); if(modal) modal.hide();");
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al convertir a factura: {ex.Message}");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender && vistaAnalisis == "graficos")
+        {
+            await GenerarGraficos();
+        }
+    }
+
+    private async Task GenerarGraficos()
+    {
+        // Datos para gráfico de estados
+        var totalBorrador = presupuestos.Where(p => p.Estado == EstadoPresupuesto.Borrador).Sum(p => p.Total);
+        var totalEnviado = presupuestos.Where(p => p.Estado == EstadoPresupuesto.Enviado).Sum(p => p.Total);
+        var totalAceptado = presupuestos.Where(p => p.Estado == EstadoPresupuesto.Aceptado).Sum(p => p.Total);
+        var totalRechazado = presupuestos.Where(p => p.Estado == EstadoPresupuesto.Rechazado).Sum(p => p.Total);
+        var totalFacturado = presupuestos.Where(p => p.Estado == EstadoPresupuesto.Facturado).Sum(p => p.Total);
+        var totalCaducado = presupuestos.Where(p => p.Estado == EstadoPresupuesto.Caducado).Sum(p => p.Total);
+
+        var scriptEstados = $@"
+            var ctx = document.getElementById('chartEstados');
+            if (ctx) {{
+                if (window.chartEstados && typeof window.chartEstados.destroy === 'function') {{
+                    window.chartEstados.destroy();
+                }}
+                window.chartEstados = new Chart(ctx, {{
+                    type: 'doughnut',
+                    data: {{
+                        labels: ['Borrador', 'Enviado', 'Aceptado', 'Rechazado', 'Facturado', 'Caducado'],
+                        datasets: [{{
+                            data: [{totalBorrador}, {totalEnviado}, {totalAceptado}, {totalRechazado}, {totalFacturado}, {totalCaducado}],
+                            backgroundColor: [
+                                'rgba(108, 117, 125, 0.8)',
+                                'rgba(13, 110, 253, 0.8)',
+                                'rgba(25, 135, 84, 0.8)',
+                                'rgba(220, 53, 69, 0.8)',
+                                'rgba(23, 162, 184, 0.8)',
+                                'rgba(52, 58, 64, 0.8)'
+                            ]
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {{
+                            legend: {{
+                                position: 'bottom'
+                            }}
+                        }}
+                    }}
+                }});
+            }}
+        ";
+
+        // Datos para gráfico mensual (últimos 6 meses)
+        var ahora = DateTime.Now;
+        var meses = new List<string>();
+        var totalesMensuales = new List<decimal>();
+
+        for (int i = 5; i >= 0; i--)
+        {
+            var mes = ahora.AddMonths(-i);
+            meses.Add(mes.ToString("MMM yyyy"));
+            var totalMes = presupuestos
+                .Where(p => p.FechaEmision.Year == mes.Year && p.FechaEmision.Month == mes.Month)
+                .Sum(p => p.Total);
+            totalesMensuales.Add(totalMes);
+        }
+
+        var mesesJson = string.Join(",", meses.Select(m => $"'{m}'"));
+        var totalesJson = string.Join(",", totalesMensuales);
+
+        var scriptMensual = $@"
+            var ctx2 = document.getElementById('chartMensual');
+            if (ctx2) {{
+                if (window.chartMensual && typeof window.chartMensual.destroy === 'function') {{
+                    window.chartMensual.destroy();
+                }}
+                window.chartMensual = new Chart(ctx2, {{
+                    type: 'bar',
+                    data: {{
+                        labels: [{mesesJson}],
+                        datasets: [{{
+                            label: 'Presupuestos',
+                            data: [{totalesJson}],
+                            backgroundColor: 'rgba(76, 175, 80, 0.8)',
+                            borderColor: 'rgba(76, 175, 80, 1)',
+                            borderWidth: 1
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {{
+                            y: {{
+                                beginAtZero: true,
+                                ticks: {{
+                                    callback: function(value) {{
+                                        return '€' + value.toLocaleString();
+                                    }}
+                                }}
+                            }}
+                        }},
+                        plugins: {{
+                            legend: {{
+                                display: false
+                            }}
+                        }}
+                    }}
+                }});
+            }}
+        ";
+
+        await JSRuntime.InvokeVoidAsync("eval", scriptEstados);
+        await Task.Delay(100);
+        await JSRuntime.InvokeVoidAsync("eval", scriptMensual);
+    }
+}

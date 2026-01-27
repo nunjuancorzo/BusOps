@@ -1,0 +1,939 @@
+@page "/conductores"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Conductores</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#conductorModal" @onclick="MostrarFormularioNuevo">
+        <span class="bi bi-plus-circle"></span> Nuevo Conductor
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Lista de Conductores</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Nombre Completo</th>
+                        <th>DNI</th>
+                        <th>Licencia</th>
+                        <th>Vencimiento</th>
+                        <th>Teléfono</th>
+                        <th>Email</th>
+                        <th>Autobús Asignado</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var conductor in conductores)
+                    {
+                        <tr>
+                            <td><strong>@conductor.Nombre @conductor.Apellidos</strong></td>
+                            <td>@conductor.DNI</td>
+                            <td>@conductor.NumeroLicencia</td>
+                            <td>
+                                @conductor.FechaVencimientoLicencia.ToString("dd/MM/yyyy")
+                                @if (conductor.FechaVencimientoLicencia < DateTime.Now.AddMonths(3))
+                                {
+                                    <span class="badge bg-warning ms-1">
+                                        <span class="bi bi-exclamation-triangle"></span>
+                                    </span>
+                                }
+                            </td>
+                            <td>@conductor.Telefono</td>
+                            <td>@conductor.Email</td>
+                            <td>
+                                @if (conductor.Autobus != null)
+                                {
+                                    <span class="badge bg-primary">
+                                        <i class="bi bi-bus-front me-1"></i>@conductor.Autobus.Matricula
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted"><small>Sin asignar</small></span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge @ObtenerClaseEstado(conductor.Estado)">
+                                    @conductor.Estado.GetDisplayName()
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#conductorModal" @onclick="() => EditarConductor(conductor)" title="Editar">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarConductor(conductor.Id)" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!conductores.Any())
+            {
+                <p class="text-center text-muted py-4">No hay conductores registrados</p>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Conductor -->
+<div class="modal fade" id="conductorModal" tabindex="-1" aria-labelledby="conductorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #9C27B0;">
+                <h5 class="modal-title" id="conductorModalLabel">@(conductorSeleccionado.Id == 0 ? "Nuevo Conductor" : "Editar Conductor")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <!-- Fila de botones fija -->
+            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarConductor">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto;">
+                <!-- Navegación por pestañas -->
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(tabActiva == "datos" ? "active" : "")" @onclick='() => CambiarTab("datos")' type="button">
+                            <i class="bi bi-person-badge me-1"></i> Datos Básicos
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(tabActiva == "caducidades" ? "active" : "")" @onclick='() => CambiarTab("caducidades")' type="button">
+                            <i class="bi bi-calendar-event me-1"></i> Fechas de Caducidad
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(tabActiva == "caracteristicas" ? "active" : "")" @onclick='() => CambiarTab("caracteristicas")' type="button">
+                            <i class="bi bi-list-check me-1"></i> Características
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(tabActiva == "documentacion" ? "active" : "")" @onclick='() => CambiarTab("documentacion")' type="button">
+                            <i class="bi bi-file-earmark-text me-1"></i> Documentación
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Contenido de las pestañas -->
+                <div class="tab-content">
+                    <!-- Pestaña: Datos Básicos -->
+                    <div class="@(tabActiva == "datos" ? "" : "d-none")">
+                        <h6 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-person-vcard text-success me-2"></i>Datos Personales
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Nombre *</label>
+                                <input type="text" class="form-control" @bind="conductorSeleccionado.Nombre" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Apellidos *</label>
+                                <input type="text" class="form-control" @bind="conductorSeleccionado.Apellidos" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">DNI *</label>
+                                <input type="text" class="form-control" @bind="conductorSeleccionado.DNI" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Teléfono</label>
+                                <input type="tel" class="form-control" @bind="conductorSeleccionado.Telefono" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" @bind="conductorSeleccionado.Email" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Núm. Seguridad Social</label>
+                                <input type="text" class="form-control" @bind="conductorSeleccionado.NumeroSeguridadSocial" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Cuenta Bancaria (IBAN)</label>
+                                <input type="text" class="form-control" @bind="conductorSeleccionado.CuentaBancaria" />
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-credit-card text-primary me-2"></i>Licencia y Estado
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Número de Licencia *</label>
+                                <input type="text" class="form-control" @bind="conductorSeleccionado.NumeroLicencia" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Estado *</label>
+                                <select class="form-select" @bind="conductorSeleccionado.Estado">
+                                    @foreach (var estado in Enum.GetValues<EstadoConductor>())
+                                    {
+                                        <option value="@estado">@estado.GetDisplayName()</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-bus-front text-warning me-2"></i>Autobús Asignado
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Autobús</label>
+                                <select class="form-select" @bind="conductorSeleccionado.AutobusId">
+                                    <option value="">-- Sin autobús asignado --</option>
+                                    @foreach (var autobus in autobuses)
+                                    {
+                                        <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo (@autobus.CapacidadPasajeros plazas)</option>
+                                    }
+                                </select>
+                                <small class="text-muted">Selecciona el autobús que conducirá habitualmente este conductor</small>
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-pencil-square text-info me-2"></i>Notas Adicionales
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Notas</label>
+                                <textarea class="form-control" rows="4" @bind="conductorSeleccionado.Notas"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pestaña: Fechas de Caducidad -->
+                    <div class="@(tabActiva == "caducidades" ? "" : "d-none")">
+                        <div class="alert alert-info mb-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <small>Los campos con <i class="bi bi-exclamation-triangle text-warning"></i> requieren atención especial para la gestión de caducidades.</small>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-building text-success me-2"></i>Datos de Empresa
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-calendar-check text-success me-1"></i>Alta Empresa
+                                </label>
+                                <input type="date" class="form-control" @bind="altaEmpresa" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-calendar-x text-danger me-1"></i>Baja Empresa
+                                </label>
+                                <input type="date" class="form-control" @bind="bajaEmpresa" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Fecha de Contratación</label>
+                                <input type="date" class="form-control" @bind="fechaContratacion" />
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-card-checklist text-primary me-2"></i>Documentación Personal
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Caducidad DNI
+                                </label>
+                                <input type="date" class="form-control" @bind="caducidadDNI" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Pasaporte
+                                </label>
+                                <input type="date" class="form-control" @bind="pasaporte" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Certificado Extracomunitario
+                                </label>
+                                <input type="date" class="form-control" @bind="certificadoExtracomunitario" />
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-credit-card-2-front text-warning me-2"></i>Permisos y Licencias
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Vencimiento Licencia
+                                </label>
+                                <input type="date" class="form-control" @bind="fechaVencimientoLicencia" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>CAP
+                                </label>
+                                <input type="date" class="form-control" @bind="cap" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Caducidad Penales
+                                </label>
+                                <input type="date" class="form-control" @bind="caducidadPenales" />
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-heart-pulse text-danger me-2"></i>Salud y Tacógrafo
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Revisión Médica
+                                </label>
+                                <input type="date" class="form-control" @bind="revisionMedica" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Tarjeta Sanitaria
+                                </label>
+                                <input type="date" class="form-control" @bind="tarjetaSanitaria" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>Caducidad Tacógrafo
+                                </label>
+                                <input type="date" class="form-control" @bind="caducidadTacografo" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-download text-info me-1"></i>Descarga Tacógrafo
+                                </label>
+                                <input type="date" class="form-control" @bind="descargaTacografo" />
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-calendar-range text-secondary me-2"></i>Contratos y Periodos
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Finalización de Contrato</label>
+                                <input type="date" class="form-control" @bind="finalizacionContrato" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Periodo de Pruebas</label>
+                                <input type="date" class="form-control" @bind="periodoPruebas" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pestaña: Características -->
+                    <div class="@(tabActiva == "caracteristicas" ? "" : "d-none")">
+                        <h6 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-check-circle text-success me-2"></i>Capacidades del Conductor
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="conduce15Metros" @bind="conductorSeleccionado.Conduce15Metros">
+                                    <label class="form-check-label" for="conduce15Metros">
+                                        <i class="bi bi-truck text-primary me-1"></i>Conduce 15 metros
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="disponibilidadInternacional" @bind="conductorSeleccionado.DisponibilidadCircuitoInternacional">
+                                    <label class="form-check-label" for="disponibilidadInternacional">
+                                        <i class="bi bi-globe text-info me-1"></i>Disponibilidad circuito internacional
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="hablaIngles" @bind="conductorSeleccionado.HablaIngles">
+                                    <label class="form-check-label" for="hablaIngles">
+                                        <i class="bi bi-translate text-success me-1"></i>Habla Inglés
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="puedeTrabajarFestivos" @bind="conductorSeleccionado.PuedeTrabajarFestivos">
+                                    <label class="form-check-label" for="puedeTrabajarFestivos">
+                                        <i class="bi bi-calendar-event text-warning me-1"></i>Puede trabajar festivos
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">
+                            <i class="bi bi-clock-history text-primary me-2"></i>Conductor Ocasional
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="esConductorOcasional" @bind="conductorSeleccionado.EsConductorOcasional">
+                                    <label class="form-check-label" for="esConductorOcasional">
+                                        <strong>Este conductor trabaja solo en servicios con horarios determinados</strong>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (conductorSeleccionado.EsConductorOcasional)
+                        {
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Especifica el rango de fechas y horarios en los que este conductor está disponible.
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Fecha Inicio</label>
+                                    <input type="date" class="form-control" @bind="fechaInicioConductorOcasional" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Fecha Fin</label>
+                                    <input type="date" class="form-control" @bind="fechaFinConductorOcasional" />
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Hora Inicio</label>
+                                    <input type="time" class="form-control" @bind="horaInicio" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Hora Fin</label>
+                                    <input type="time" class="form-control" @bind="horaFin" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Pestaña: Documentación -->
+                    <div class="@(tabActiva == "documentacion" ? "" : "d-none")">
+                        @if (conductorSeleccionado.Id == 0)
+                        {
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>Guarda primero el conductor</strong> para poder adjuntar documentación.
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#documentoModal" @onclick="NuevoDocumento">
+                                <i class="bi bi-plus-circle me-1"></i>Agregar Documento
+                            </button>
+
+                            @if (documentos.Any())
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Tipo</th>
+                                                <th>Nombre Archivo</th>
+                                                <th>Descripción</th>
+                                                <th>Fecha Subida</th>
+                                                <th>Vencimiento</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var doc in documentos)
+                                            {
+                                                <tr>
+                                                    <td><span class="badge bg-info">@doc.TipoDocumento</span></td>
+                                                    <td>@doc.NombreArchivo</td>
+                                                    <td>@doc.Descripcion</td>
+                                                    <td>@doc.FechaSubida.ToString("dd/MM/yyyy")</td>
+                                                    <td>
+                                                        @if (doc.FechaVencimiento.HasValue)
+                                                        {
+                                                            <span>@doc.FechaVencimiento.Value.ToString("dd/MM/yyyy")</span>
+                                                            @if (doc.FechaVencimiento.Value < DateTime.Now)
+                                                            {
+                                                                <span class="badge bg-danger ms-1">Vencido</span>
+                                                            }
+                                                            else if (doc.FechaVencimiento.Value < DateTime.Now.AddMonths(1))
+                                                            {
+                                                                <span class="badge bg-warning ms-1">Próximo a vencer</span>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">-</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarDocumento(doc.Id)">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-center text-muted py-4">No hay documentos registrados para este conductor</p>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para agregar documento -->
+<div class="modal fade" id="documentoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header text-white" style="background-color: #9C27B0;">
+                <h5 class="modal-title">Agregar Documento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Documento *</label>
+                    <select class="form-select" @bind="nuevoDoc.TipoDocumento">
+                        <option value="Licencia">Licencia de Conducir</option>
+                        <option value="Certificado Médico">Certificado Médico</option>
+                        <option value="Contrato">Contrato</option>
+                        <option value="Seguro">Seguro</option>
+                        <option value="Formación">Formación/Certificación</option>
+                        <option value="CAP">CAP</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre del Archivo *</label>
+                    <input type="text" class="form-control" @bind="nuevoDoc.NombreArchivo" placeholder="Ej: Licencia_Conducir_2025.pdf" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <textarea class="form-control" rows="2" @bind="nuevoDoc.Descripcion" placeholder="Descripción opcional del documento"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Archivo *</label>
+                    <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+                    <small class="text-muted">Selecciona un archivo PDF, Word o imagen</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Fecha de Vencimiento (opcional)</label>
+                    <input type="date" class="form-control" @bind="fechaVencimientoDoc" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" @onclick="GuardarDocumento">
+                    <i class="bi bi-save me-1"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Conductor> conductores = new();
+    private Conductor conductorSeleccionado = new();
+    private List<Autobus> autobuses = new();
+    private DateTime fechaVencimientoLicencia = DateTime.Now;
+    private DateTime fechaContratacion = DateTime.Now;
+    
+    // Variables para pestañas
+    private string tabActiva = "datos";
+    
+    // Variables para fechas de caducidad
+    private DateTime? altaEmpresa;
+    private DateTime? bajaEmpresa;
+    private DateTime? revisionMedica;
+    private DateTime? caducidadTacografo;
+    private DateTime? caducidadDNI;
+    private DateTime? pasaporte;
+    private DateTime? descargaTacografo;
+    private DateTime? finalizacionContrato;
+    private DateTime? periodoPruebas;
+    private DateTime? cap;
+    private DateTime? caducidadPenales;
+    private DateTime? certificadoExtracomunitario;
+    private DateTime? tarjetaSanitaria;
+    
+    // Variables para conductor ocasional
+    private DateTime? fechaInicioConductorOcasional;
+    private DateTime? fechaFinConductorOcasional;
+    private TimeOnly? horaInicio;
+    private TimeOnly? horaFin;
+    
+    // Variables para documentación
+    private List<Documento> documentos = new();
+    private Documento nuevoDoc = new();
+    private DateTime? fechaVencimientoDoc;
+    private IBrowserFile? archivoSeleccionado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        conductores = await context.Conductores
+            .Include(c => c.Autobus)
+            .ToListAsync();
+            
+        autobuses = await context.Autobuses
+            .Where(a => a.Estado == EstadoAutobus.Disponible || a.Estado == EstadoAutobus.EnServicio || a.Estado == EstadoAutobus.EnMantenimiento)
+            .OrderBy(a => a.Matricula)
+            .ToListAsync();
+    }
+
+    private async Task CargarConductores()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        conductores = await context.Conductores
+            .Include(c => c.Autobus)
+            .ToListAsync();
+    }
+    
+    private void CambiarTab(string nombreTab)
+    {
+        tabActiva = nombreTab;
+        StateHasChanged();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        conductorSeleccionado = new Conductor
+        {
+            Estado = EstadoConductor.Activo,
+            FechaContratacion = DateTime.Now
+        };
+        fechaVencimientoLicencia = DateTime.Now.AddYears(5);
+        fechaContratacion = DateTime.Now;
+        
+        // Resetear fechas de caducidad
+        altaEmpresa = null;
+        bajaEmpresa = null;
+        revisionMedica = null;
+        caducidadTacografo = null;
+        caducidadDNI = null;
+        pasaporte = null;
+        descargaTacografo = null;
+        finalizacionContrato = null;
+        periodoPruebas = null;
+        cap = null;
+        caducidadPenales = null;
+        certificadoExtracomunitario = null;
+        tarjetaSanitaria = null;
+        
+        // Resetear conductor ocasional
+        fechaInicioConductorOcasional = null;
+        fechaFinConductorOcasional = null;
+        horaInicio = null;
+        horaFin = null;
+        
+        // Resetear documentos
+        documentos = new();
+        nuevoDoc = new();
+        fechaVencimientoDoc = null;
+        archivoSeleccionado = null;
+        
+        tabActiva = "datos";
+    }
+
+    private async Task EditarConductor(Conductor conductor)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var conductorCompleto = await context.Conductores
+            .Include(c => c.Documentos)
+            .FirstOrDefaultAsync(c => c.Id == conductor.Id);
+            
+        if (conductorCompleto != null)
+        {
+            conductorSeleccionado = new Conductor
+            {
+                Id = conductorCompleto.Id,
+                Nombre = conductorCompleto.Nombre,
+                Apellidos = conductorCompleto.Apellidos,
+                DNI = conductorCompleto.DNI,
+                NumeroLicencia = conductorCompleto.NumeroLicencia,
+                FechaVencimientoLicencia = conductorCompleto.FechaVencimientoLicencia,
+                Telefono = conductorCompleto.Telefono,
+                Email = conductorCompleto.Email,
+                FechaContratacion = conductorCompleto.FechaContratacion,
+                Estado = conductorCompleto.Estado,
+                AutobusId = conductorCompleto.AutobusId,
+                NumeroSeguridadSocial = conductorCompleto.NumeroSeguridadSocial,
+                CuentaBancaria = conductorCompleto.CuentaBancaria,
+                Notas = conductorCompleto.Notas,
+                
+                // Fechas de caducidad
+                AltaEmpresa = conductorCompleto.AltaEmpresa,
+                BajaEmpresa = conductorCompleto.BajaEmpresa,
+                RevisionMedica = conductorCompleto.RevisionMedica,
+                CaducidadTacografo = conductorCompleto.CaducidadTacografo,
+                CaducidadDNI = conductorCompleto.CaducidadDNI,
+                Pasaporte = conductorCompleto.Pasaporte,
+                DescargaTacografo = conductorCompleto.DescargaTacografo,
+                FinalizacionContrato = conductorCompleto.FinalizacionContrato,
+                PeriodoPruebas = conductorCompleto.PeriodoPruebas,
+                CAP = conductorCompleto.CAP,
+                CaducidadPenales = conductorCompleto.CaducidadPenales,
+                CertificadoExtracomunitario = conductorCompleto.CertificadoExtracomunitario,
+                TarjetaSanitaria = conductorCompleto.TarjetaSanitaria,
+                
+                // Características
+                Conduce15Metros = conductorCompleto.Conduce15Metros,
+                DisponibilidadCircuitoInternacional = conductorCompleto.DisponibilidadCircuitoInternacional,
+                HablaIngles = conductorCompleto.HablaIngles,
+                PuedeTrabajarFestivos = conductorCompleto.PuedeTrabajarFestivos,
+                
+                // Conductor ocasional
+                EsConductorOcasional = conductorCompleto.EsConductorOcasional,
+                FechaInicioConductorOcasional = conductorCompleto.FechaInicioConductorOcasional,
+                FechaFinConductorOcasional = conductorCompleto.FechaFinConductorOcasional,
+                HoraInicioConductorOcasional = conductorCompleto.HoraInicioConductorOcasional,
+                HoraFinConductorOcasional = conductorCompleto.HoraFinConductorOcasional
+            };
+            
+            fechaVencimientoLicencia = conductorCompleto.FechaVencimientoLicencia;
+            fechaContratacion = conductorCompleto.FechaContratacion;
+            
+            // Cargar fechas de caducidad
+            altaEmpresa = conductorCompleto.AltaEmpresa;
+            bajaEmpresa = conductorCompleto.BajaEmpresa;
+            revisionMedica = conductorCompleto.RevisionMedica;
+            caducidadTacografo = conductorCompleto.CaducidadTacografo;
+            caducidadDNI = conductorCompleto.CaducidadDNI;
+            pasaporte = conductorCompleto.Pasaporte;
+            descargaTacografo = conductorCompleto.DescargaTacografo;
+            finalizacionContrato = conductorCompleto.FinalizacionContrato;
+            periodoPruebas = conductorCompleto.PeriodoPruebas;
+            cap = conductorCompleto.CAP;
+            caducidadPenales = conductorCompleto.CaducidadPenales;
+            certificadoExtracomunitario = conductorCompleto.CertificadoExtracomunitario;
+            tarjetaSanitaria = conductorCompleto.TarjetaSanitaria;
+            
+            // Cargar conductor ocasional
+            fechaInicioConductorOcasional = conductorCompleto.FechaInicioConductorOcasional;
+            fechaFinConductorOcasional = conductorCompleto.FechaFinConductorOcasional;
+            
+            // Convertir TimeSpan a TimeOnly para los inputs
+            horaInicio = conductorCompleto.HoraInicioConductorOcasional.HasValue 
+                ? TimeOnly.FromTimeSpan(conductorCompleto.HoraInicioConductorOcasional.Value)
+                : null;
+            horaFin = conductorCompleto.HoraFinConductorOcasional.HasValue 
+                ? TimeOnly.FromTimeSpan(conductorCompleto.HoraFinConductorOcasional.Value)
+                : null;
+            
+            // Cargar documentos
+            documentos = conductorCompleto.Documentos?.ToList() ?? new List<Documento>();
+            nuevoDoc = new();
+            fechaVencimientoDoc = null;
+            archivoSeleccionado = null;
+            
+            tabActiva = "datos";
+        }
+    }
+
+    private async Task GuardarConductor()
+    {
+        conductorSeleccionado.FechaVencimientoLicencia = fechaVencimientoLicencia;
+        conductorSeleccionado.FechaContratacion = fechaContratacion;
+        
+        // Asignar fechas de caducidad
+        conductorSeleccionado.AltaEmpresa = altaEmpresa;
+        conductorSeleccionado.BajaEmpresa = bajaEmpresa;
+        conductorSeleccionado.RevisionMedica = revisionMedica;
+        conductorSeleccionado.CaducidadTacografo = caducidadTacografo;
+        conductorSeleccionado.CaducidadDNI = caducidadDNI;
+        conductorSeleccionado.Pasaporte = pasaporte;
+        conductorSeleccionado.DescargaTacografo = descargaTacografo;
+        conductorSeleccionado.FinalizacionContrato = finalizacionContrato;
+        conductorSeleccionado.PeriodoPruebas = periodoPruebas;
+        conductorSeleccionado.CAP = cap;
+        conductorSeleccionado.CaducidadPenales = caducidadPenales;
+        conductorSeleccionado.CertificadoExtracomunitario = certificadoExtracomunitario;
+        conductorSeleccionado.TarjetaSanitaria = tarjetaSanitaria;
+        
+        // Asignar conductor ocasional
+        conductorSeleccionado.FechaInicioConductorOcasional = fechaInicioConductorOcasional;
+        conductorSeleccionado.FechaFinConductorOcasional = fechaFinConductorOcasional;
+        
+        // Convertir TimeOnly a TimeSpan
+        conductorSeleccionado.HoraInicioConductorOcasional = horaInicio?.ToTimeSpan();
+        conductorSeleccionado.HoraFinConductorOcasional = horaFin?.ToTimeSpan();
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (conductorSeleccionado.Id == 0)
+        {
+            context.Conductores.Add(conductorSeleccionado);
+        }
+        else
+        {
+            context.Conductores.Update(conductorSeleccionado);
+        }
+        
+        await context.SaveChangesAsync();
+        await CargarConductores();
+
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('conductorModal')).hide()");
+        StateHasChanged();
+    }
+
+    private async Task EliminarConductor(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var conductor = await context.Conductores.FindAsync(id);
+        if (conductor != null)
+        {
+            context.Conductores.Remove(conductor);
+            await context.SaveChangesAsync();
+            await CargarConductores();
+        }
+    }
+    
+    private void NuevoDocumento()
+    {
+        nuevoDoc = new Documento
+        {
+            TipoDocumento = "Licencia",
+            FechaSubida = DateTime.Now,
+            ConductorId = conductorSeleccionado.Id
+        };
+        fechaVencimientoDoc = null;
+        archivoSeleccionado = null;
+    }
+    
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        archivoSeleccionado = e.File;
+        nuevoDoc.NombreArchivo = archivoSeleccionado.Name;
+    }
+
+    private async Task GuardarDocumento()
+    {
+        if (archivoSeleccionado == null || string.IsNullOrWhiteSpace(nuevoDoc.TipoDocumento))
+        {
+            return;
+        }
+
+        try
+        {
+            // Crear directorio si no existe
+            var rutaCarpeta = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "documentos", "conductores");
+            Directory.CreateDirectory(rutaCarpeta);
+
+            // Generar nombre único para el archivo
+            var extension = Path.GetExtension(archivoSeleccionado.Name);
+            var nombreArchivo = $"{Guid.NewGuid()}{extension}";
+            var rutaCompleta = Path.Combine(rutaCarpeta, nombreArchivo);
+
+            // Guardar archivo
+            using (var stream = new FileStream(rutaCompleta, FileMode.Create))
+            {
+                await archivoSeleccionado.OpenReadStream(maxAllowedSize: 10485760).CopyToAsync(stream); // 10MB max
+            }
+
+            // Guardar en base de datos
+            var documento = new Documento
+            {
+                TipoDocumento = nuevoDoc.TipoDocumento,
+                Descripcion = nuevoDoc.Descripcion,
+                NombreArchivo = archivoSeleccionado.Name,
+                RutaArchivo = $"/documentos/conductores/{nombreArchivo}",
+                FechaSubida = DateTime.Now,
+                FechaVencimiento = fechaVencimientoDoc,
+                ConductorId = conductorSeleccionado.Id
+            };
+
+            using var context = await DbFactory.CreateDbContextAsync();
+            context.Documentos.Add(documento);
+            await context.SaveChangesAsync();
+
+            // Recargar documentos
+            documentos = await context.Documentos
+                .Where(d => d.ConductorId == conductorSeleccionado.Id)
+                .ToListAsync();
+
+            // Limpiar formulario
+            nuevoDoc = new();
+            fechaVencimientoDoc = null;
+            archivoSeleccionado = null;
+            
+            // Cerrar modal
+            await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('documentoModal')).hide()");
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al guardar documento: {ex.Message}");
+        }
+    }
+
+    private async Task EliminarDocumento(int documentoId)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var documento = await context.Documentos.FindAsync(documentoId);
+        
+        if (documento != null)
+        {
+            // Eliminar archivo físico
+            var rutaArchivo = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", documento.RutaArchivo.TrimStart('/'));
+            if (File.Exists(rutaArchivo))
+            {
+                File.Delete(rutaArchivo);
+            }
+
+            // Eliminar de base de datos
+            context.Documentos.Remove(documento);
+            await context.SaveChangesAsync();
+
+            // Recargar documentos
+            documentos = await context.Documentos
+                .Where(d => d.ConductorId == conductorSeleccionado.Id)
+                .ToListAsync();
+
+            StateHasChanged();
+        }
+    }
+
+    private string ObtenerClaseEstado(EstadoConductor estado)
+    {
+        return estado switch
+        {
+            EstadoConductor.Activo => "bg-success",
+            EstadoConductor.DeVacaciones => "bg-info",
+            EstadoConductor.DeBaja => "bg-warning",
+            EstadoConductor.Inactivo => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}

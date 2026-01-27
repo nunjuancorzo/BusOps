@@ -1,0 +1,690 @@
+@page "/configuracion"
+@using BusOps.Models
+@using BusOps.Data
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject IWebHostEnvironment Environment
+@inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>BusOps - Configuración</PageTitle>
+
+<div class="container-fluid mt-4">
+    <h3><i class="bi bi-gear-fill"></i> Configuración</h3>
+
+    <!-- Tabs de navegación -->
+    <ul class="nav nav-tabs mt-4" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(tabActivo == "empresa" ? "active" : "")" 
+                    @onclick='() => tabActivo = "empresa"' 
+                    type="button">
+                <i class="bi bi-building"></i> Configuración de Empresa
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(tabActivo == "documentos" ? "active" : "")" 
+                    @onclick='() => tabActivo = "documentos"' 
+                    type="button">
+                <i class="bi bi-file-earmark-text"></i> Documentos
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(tabActivo == "usuarios" ? "active" : "")" 
+                    @onclick='() => tabActivo = "usuarios"' 
+                    type="button">
+                <i class="bi bi-people-fill"></i> Gestión de Usuarios
+            </button>
+        </li>
+    </ul>
+
+    <!-- Contenido de tabs -->
+    <div class="tab-content mt-3">
+        @if (tabActivo == "empresa")
+        {
+            <div class="row justify-content-center">
+                <div class="col-md-10 col-lg-8">
+        <!-- Datos de la empresa -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-building"></i> Datos de la Empresa</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nombre de la Empresa *</label>
+                        <input type="text" class="form-control" @bind="configuracion.NombreEmpresa" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">NIF/CIF *</label>
+                        <input type="text" class="form-control" @bind="configuracion.NIF" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Dirección *</label>
+                        <input type="text" class="form-control" @bind="configuracion.Direccion" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Ciudad *</label>
+                        <input type="text" class="form-control" @bind="configuracion.Ciudad" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Código Postal *</label>
+                        <input type="text" class="form-control" @bind="configuracion.CodigoPostal" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Provincia *</label>
+                        <input type="text" class="form-control" @bind="configuracion.Provincia" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Teléfono *</label>
+                        <input type="text" class="form-control" @bind="configuracion.Telefono" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Email *</label>
+                        <input type="email" class="form-control" @bind="configuracion.Email" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Sitio Web</label>
+                        <input type="text" class="form-control" @bind="configuracion.Web" placeholder="https://www.ejemplo.com" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">IBAN (para facturas)</label>
+                        <input type="text" class="form-control" @bind="configuracion.IBAN" placeholder="ES00 0000 0000 0000 0000 0000" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Logo de la Empresa</label>
+                        @if (!string.IsNullOrEmpty(logoPreview))
+                        {
+                            <div class="mb-3 text-center p-3" style="background-color: #f8f9fa; border-radius: 8px;">
+                                <img src="@logoPreview" alt="Logo Empresa" style="max-height: 150px; max-width: 100%; border-radius: 8px; border: 2px solid #dee2e6;" />
+                                <div class="mt-2">
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="EliminarLogo">
+                                        <i class="bi bi-trash"></i> Eliminar Logo
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        <div>
+                            <InputFile OnChange="CargarLogo" class="form-control" accept="image/*" />
+                            <small class="text-muted">Formatos soportados: JPG, PNG, GIF. Tamaño máximo: 2MB</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuración de facturación -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-receipt"></i> Configuración de Facturación</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-info-circle"></i> La serie de factura define el formato de numeración de tus facturas.
+                    </div>
+                    <div>
+                        <strong>Próxima factura:</strong> <code class="fs-5">@GenerarEjemploFactura()</code>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Serie de Factura *</label>
+                        <input type="text" class="form-control" @bind="configuracion.SerieFactura" @bind:event="oninput" maxlength="10" />
+                        <small class="text-muted">Ej: FAC, FV, FACT</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Número Actual</label>
+                        <input type="number" class="form-control" @bind="configuracion.NumeroFacturaActual" @bind:event="oninput" />
+                        <small class="text-muted">Próxima factura usará este número</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Longitud del Número</label>
+                        <input type="number" class="form-control" @bind="configuracion.LongitudNumeroFactura" @bind:event="oninput" min="3" max="8" />
+                        <small class="text-muted">Dígitos del número (ej: 4 = 0001)</small>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="configuracion.IncluirAñoEnSerie" id="incluirAño">
+                            <label class="form-check-label" for="incluirAño">
+                                Incluir año en la serie
+                            </label>
+                        </div>
+                        <small class="text-muted">FAC-2025-0001</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">IVA por Defecto (%)</label>
+                        <input type="number" step="0.01" class="form-control" @bind="configuracion.IVAPorDefecto" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Días de Vencimiento</label>
+                        <input type="number" class="form-control" @bind="configuracion.DiasVencimientoPorDefecto" />
+                        <small class="text-muted">Días para pagar la factura</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuración de presupuestos -->
+        <div class="card mb-4">
+            <div class="card-header" style="background-color: #4CAF50; color: white;">
+                <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Configuración de Presupuestos</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-info-circle"></i> La serie de presupuesto define el formato de numeración de tus presupuestos.
+                    </div>
+                    <div>
+                        <strong>Próximo presupuesto:</strong> <code class="fs-5">@GenerarEjemploPresupuesto()</code>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Serie de Presupuesto *</label>
+                        <input type="text" class="form-control" @bind="configuracion.SeriePresupuesto" @bind:event="oninput" maxlength="10" />
+                        <small class="text-muted">Ej: PRES, PRE, PRESUP</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Número Actual</label>
+                        <input type="number" class="form-control" @bind="configuracion.NumeroPresupuestoActual" @bind:event="oninput" />
+                        <small class="text-muted">Próximo presupuesto usará este número</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Longitud del Número</label>
+                        <input type="number" class="form-control" @bind="configuracion.LongitudNumeroPresupuesto" @bind:event="oninput" min="3" max="8" />
+                        <small class="text-muted">Dígitos del número (ej: 4 = 0001)</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Datos Financieros -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header" style="background-color: #FF9800; color: white;">
+                <h5 class="mb-0"><i class="bi bi-credit-card"></i> Datos Financieros y Contacto</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Cuenta Bancaria</label>
+                        <input type="text" class="form-control" @bind="configuracion.CuentaBancaria" placeholder="Número de cuenta" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Forma de Pago</label>
+                        <input type="text" class="form-control" @bind="configuracion.FormaPago" placeholder="Ej: Transferencia, Efectivo" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Límite de Crédito</label>
+                        <input type="number" step="0.01" class="form-control" @bind="configuracion.LimiteCredito" placeholder="0.00" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Días de Pago</label>
+                        <input type="number" class="form-control" @bind="configuracion.DiasPago" placeholder="30" />
+                        <small class="text-muted">Días para realizar pagos a proveedores</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Contacto</label>
+                        <input type="text" class="form-control" @bind="configuracion.Contacto" placeholder="Nombre del contacto principal" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-lg" style="background-color: #003366; color: white;" @onclick="GuardarConfiguracion">
+                <i class="bi bi-save"></i> Guardar Configuración
+            </button>
+            <button class="btn btn-secondary btn-lg" @onclick="CancelarEdicion">
+                <i class="bi bi-x-circle"></i> Cancelar
+            </button>
+        </div>
+                </div>
+            </div>
+        }
+        else if (tabActivo == "documentos")
+        {
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: #FF9800; color: white;">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Documentos de la Empresa</h5>
+                </div>
+                <div class="card-body">
+                    @if (configuracion.Id == 0)
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Primero guarda la configuración para poder gestionar documentos.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#documentoModal" @onclick="NuevoDocumento">
+                                <i class="bi bi-plus-circle"></i> Agregar Documento
+                            </button>
+                        </div>
+                        
+                        @if (documentos.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <th>Nombre</th>
+                                            <th>Descripción</th>
+                                            <th>Fecha Subida</th>
+                                            <th>Vencimiento</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var doc in documentos)
+                                        {
+                                            <tr>
+                                                <td><span class="badge bg-secondary">@doc.TipoDocumento</span></td>
+                                                <td>@doc.NombreArchivo</td>
+                                                <td>@doc.Descripcion</td>
+                                                <td>@doc.FechaSubida.ToString("dd/MM/yyyy")</td>
+                                                <td>@(doc.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                                <td>
+                                                    <a href="@doc.RutaArchivo" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarDocumento(doc.Id)" title="Eliminar">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-center text-muted py-4">No hay documentos registrados para la empresa</p>
+                        }
+                    }
+                </div>
+            </div>
+        }
+        else if (tabActivo == "usuarios")
+        {
+            <BusOps.Components.Pages.Usuarios />
+        }
+    </div>
+</div>
+
+<!-- Modal para agregar documento -->
+<div class="modal fade" id="documentoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header text-white" style="background-color: #FF9800;">
+                <h5 class="modal-title">Agregar Documento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo de Documento *</label>
+                    <select class="form-select" @bind="nuevoDoc.TipoDocumento">
+                        <option value="Licencia">Licencia de Transporte</option>
+                        <option value="Seguro">Seguro de Empresa</option>
+                        <option value="Certificado">Certificado</option>
+                        <option value="Contrato">Contrato</option>
+                        <option value="Legal">Documento Legal</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre del Archivo *</label>
+                    <input type="text" class="form-control" @bind="nuevoDoc.NombreArchivo" placeholder="Ej: Licencia_Transporte_2025.pdf" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <textarea class="form-control" rows="2" @bind="nuevoDoc.Descripcion" placeholder="Descripción opcional del documento"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Archivo *</label>
+                    <InputFile OnChange="HandleFileSelected" class="form-control" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+                    <small class="text-muted">Selecciona un archivo PDF, Word o imagen</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Fecha de Vencimiento (opcional)</label>
+                    <input type="date" class="form-control" @bind="fechaVencimientoDoc" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarDocumento">
+                    <i class="bi bi-save me-1"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (mostrarMensaje)
+{
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div class="toast show" role="alert">
+            <div class="toast-header bg-success text-white">
+                <i class="bi bi-check-circle me-2"></i>
+                <strong class="me-auto">Éxito</strong>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarMensaje = false"></button>
+            </div>
+            <div class="toast-body">
+                Configuración guardada correctamente
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ConfiguracionEmpresa configuracion = new();
+    private bool mostrarMensaje = false;
+    private string logoPreview = string.Empty;
+    private string tabActivo = "empresa";
+    private string? currentUserRole;
+    private bool hasChecked = false;
+    private List<Documento> documentos = new();
+    private Documento nuevoDoc = new();
+    private DateTime? fechaVencimientoDoc;
+    private IBrowserFile? archivoSeleccionado;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !hasChecked)
+        {
+            hasChecked = true;
+            
+            // Verificar si el usuario es administrador
+            var roleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (!roleResult.Success || roleResult.Value != "Administrador")
+            {
+                NavigationManager.NavigateTo("/");
+                return;
+            }
+            
+            currentUserRole = roleResult.Value;
+            await CargarConfiguracion();
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarConfiguracion()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        // Cargar desde la base de datos
+        configuracion = await context.ConfiguracionEmpresa
+            .Include(c => c.Documentos)
+            .FirstOrDefaultAsync() ?? new ConfiguracionEmpresa
+        {
+            NombreEmpresa = "BusOps Transportes S.L.",
+            NIF = "B12345678",
+            Direccion = "Calle Principal 123",
+            Ciudad = "Madrid",
+            CodigoPostal = "28001",
+            Provincia = "Madrid",
+            Telefono = "910123456",
+            Email = "info@busops.com",
+            Web = "https://www.busops.com",
+            IBAN = "ES00 0000 0000 0000 0000 0000",
+            SerieFactura = "FAC",
+            NumeroFacturaActual = 1,
+            LongitudNumeroFactura = 4,
+            IncluirAñoEnSerie = true,
+            IVAPorDefecto = 21m,
+            DiasVencimientoPorDefecto = 30
+        };
+
+        // Cargar preview del logo si existe
+        if (!string.IsNullOrEmpty(configuracion.LogoRuta))
+        {
+            logoPreview = configuracion.LogoRuta;
+        }
+
+        // Cargar documentos si existe configuración
+        if (configuracion.Id > 0)
+        {
+            documentos = configuracion.Documentos.ToList();
+        }
+    }
+
+    private async Task CargarLogo(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        var archivo = e.File;
+        
+        if (archivo != null)
+        {
+            // Validar tamaño (máximo 2MB)
+            if (archivo.Size > 2 * 1024 * 1024)
+            {
+                return; // En una app real, mostrar error
+            }
+
+            // Validar tipo de archivo
+            if (!archivo.ContentType.StartsWith("image/"))
+            {
+                return; // En una app real, mostrar error
+            }
+
+            // Crear directorio de logos si no existe
+            var logosPath = Path.Combine(Environment.WebRootPath, "logos");
+            if (!Directory.Exists(logosPath))
+            {
+                Directory.CreateDirectory(logosPath);
+            }
+
+            // Generar nombre único para el archivo
+            var extension = Path.GetExtension(archivo.Name);
+            var nombreArchivo = $"logo-empresa{extension}";
+            var rutaCompleta = Path.Combine(logosPath, nombreArchivo);
+
+            // Guardar archivo físicamente
+            using (var stream = archivo.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024))
+            {
+                using (var fileStream = new FileStream(rutaCompleta, FileMode.Create))
+                {
+                    await stream.CopyToAsync(fileStream);
+                }
+            }
+
+            // Actualizar ruta en la configuración
+            configuracion.LogoRuta = $"/logos/{nombreArchivo}";
+            logoPreview = configuracion.LogoRuta;
+        }
+    }
+
+    private string GenerarEjemploFactura()
+    {
+        var numero = configuracion.NumeroFacturaActual.ToString().PadLeft(configuracion.LongitudNumeroFactura, '0');
+        if (configuracion.IncluirAñoEnSerie)
+        {
+            return $"{configuracion.SerieFactura}-{DateTime.Now.Year}-{numero}";
+        }
+        return $"{configuracion.SerieFactura}-{numero}";
+    }
+
+    private string GenerarEjemploPresupuesto()
+    {
+        var numero = configuracion.NumeroPresupuestoActual.ToString().PadLeft(configuracion.LongitudNumeroPresupuesto, '0');
+        if (configuracion.IncluirAñoEnSerie)
+        {
+            return $"{configuracion.SeriePresupuesto}-{DateTime.Now.Year}-{numero}";
+        }
+        return $"{configuracion.SeriePresupuesto}-{numero}";
+    }
+
+    private async Task GuardarConfiguracion()
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            
+            // Verificar si ya existe una configuración
+            var existente = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+            
+            if (existente != null)
+            {
+                // Actualizar configuración existente
+                existente.NombreEmpresa = configuracion.NombreEmpresa;
+                existente.NIF = configuracion.NIF;
+                existente.Direccion = configuracion.Direccion;
+                existente.Ciudad = configuracion.Ciudad;
+                existente.CodigoPostal = configuracion.CodigoPostal;
+                existente.Provincia = configuracion.Provincia;
+                existente.Telefono = configuracion.Telefono;
+                existente.Email = configuracion.Email;
+                existente.Web = configuracion.Web;
+                existente.IBAN = configuracion.IBAN;
+                existente.SerieFactura = configuracion.SerieFactura;
+                existente.NumeroFacturaActual = configuracion.NumeroFacturaActual;
+                existente.LongitudNumeroFactura = configuracion.LongitudNumeroFactura;
+                existente.IncluirAñoEnSerie = configuracion.IncluirAñoEnSerie;
+                existente.SeriePresupuesto = configuracion.SeriePresupuesto;
+                existente.NumeroPresupuestoActual = configuracion.NumeroPresupuestoActual;
+                existente.LongitudNumeroPresupuesto = configuracion.LongitudNumeroPresupuesto;
+                existente.IVAPorDefecto = configuracion.IVAPorDefecto;
+                existente.DiasVencimientoPorDefecto = configuracion.DiasVencimientoPorDefecto;
+                existente.LogoRuta = configuracion.LogoRuta;
+                existente.CuentaBancaria = configuracion.CuentaBancaria;
+                existente.FormaPago = configuracion.FormaPago;
+                existente.LimiteCredito = configuracion.LimiteCredito;
+                existente.DiasPago = configuracion.DiasPago;
+                existente.Contacto = configuracion.Contacto;
+                
+                context.ConfiguracionEmpresa.Update(existente);
+            }
+            else
+            {
+                // Crear nueva configuración
+                context.ConfiguracionEmpresa.Add(configuracion);
+            }
+            
+            await context.SaveChangesAsync();
+            
+            mostrarMensaje = true;
+            StateHasChanged();
+            
+            // Ocultar mensaje después de 3 segundos
+            await Task.Delay(3000);
+            mostrarMensaje = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            // En producción, manejar el error apropiadamente
+            Console.WriteLine($"Error al guardar configuración: {ex.Message}");
+        }
+    }
+
+    private async Task CancelarEdicion()
+    {
+        await CargarConfiguracion();
+    }
+
+    private void EliminarLogo()
+    {
+        configuracion.LogoRuta = string.Empty;
+        logoPreview = string.Empty;
+    }
+
+    private void NuevoDocumento()
+    {
+        nuevoDoc = new Documento
+        {
+            TipoDocumento = "Licencia",
+            FechaSubida = DateTime.Now,
+            ConfiguracionEmpresaId = configuracion.Id
+        };
+        fechaVencimientoDoc = null;
+        archivoSeleccionado = null;
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        archivoSeleccionado = e.File;
+        nuevoDoc.NombreArchivo = archivoSeleccionado.Name;
+    }
+
+    private async Task GuardarDocumento()
+    {
+        if (archivoSeleccionado == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debes seleccionar un archivo");
+            return;
+        }
+
+        var rutaDocumentos = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "documentos", "empresa");
+        Directory.CreateDirectory(rutaDocumentos);
+
+        var nombreArchivo = $"{configuracion.Id}_{DateTime.Now:yyyyMMddHHmmss}_{archivoSeleccionado.Name}";
+        var rutaCompleta = Path.Combine(rutaDocumentos, nombreArchivo);
+
+        using (var stream = new FileStream(rutaCompleta, FileMode.Create))
+        {
+            await archivoSeleccionado.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(stream);
+        }
+
+        nuevoDoc.RutaArchivo = $"/documentos/empresa/{nombreArchivo}";
+        nuevoDoc.FechaVencimiento = fechaVencimientoDoc;
+        nuevoDoc.ConfiguracionEmpresaId = configuracion.Id;
+        
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.Documentos.Add(nuevoDoc);
+        await context.SaveChangesAsync();
+        
+        documentos = await context.Documentos
+            .Where(d => d.ConfiguracionEmpresaId == configuracion.Id)
+            .ToListAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('documentoModal')).hide()");
+        StateHasChanged();
+    }
+
+    private async Task EliminarDocumento(int documentoId)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de que deseas eliminar este documento?");
+        if (!confirmar) return;
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        var documento = await context.Documentos.FindAsync(documentoId);
+        if (documento != null)
+        {
+            context.Documentos.Remove(documento);
+            await context.SaveChangesAsync();
+            
+            documentos = await context.Documentos
+                .Where(d => d.ConfiguracionEmpresaId == configuracion.Id)
+                .ToListAsync();
+            
+            StateHasChanged();
+        }
+    }
+}

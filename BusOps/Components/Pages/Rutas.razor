@@ -1,0 +1,414 @@
+@page "/rutas"
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Rutas</PageTitle>
+
+<div class="mb-3">
+    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#rutaModal" @onclick="MostrarFormularioNuevo">
+        <span class="bi bi-plus-circle"></span> Nueva Ruta
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5>Lista de Rutas</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Origen</th>
+                        <th>Destino</th>
+                        <th>Distancia</th>
+                        <th>Duración</th>
+                        <th>Precio Base</th>
+                        <th>Estado</th>
+                        <th style="width: 150px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ruta in rutas)
+                    {
+                        <tr class="@(!ruta.Activa ? "table-secondary" : "")">
+                            <td><strong>@ruta.Nombre</strong></td>
+                            <td>@ruta.Origen</td>
+                            <td>@ruta.Destino</td>
+                            <td>@ruta.DistanciaKm.ToString("N1") km</td>
+                            <td>@FormatearDuracion(ruta.DuracionEstimada)</td>
+                            <td>@ruta.PrecioBase.ToString("C2")</td>
+                            <td>
+                                @if (ruta.Activa)
+                                {
+                                    <span class="badge bg-success">Activa</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactiva</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#paradasInfoModal" @onclick="() => VerParadas(ruta)" title="Ver Paradas">
+                                    <img src="/info.png" alt="Ver Paradas" style="height: 14px; width: 14px; object-fit: contain;" />
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#rutaModal" @onclick="() => EditarRuta(ruta)" title="Editar">
+                                    <i class="bi bi-pencil-fill"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarRuta(ruta.Id)" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!rutas.Any())
+            {
+                <p class="text-center text-muted py-4">No hay rutas registradas</p>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Ver Paradas de una Ruta -->
+<div class="modal fade" id="paradasInfoModal" tabindex="-1" aria-labelledby="paradasInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="paradasInfoModalLabel">Paradas de la ruta: @(rutaSeleccionada?.Nombre ?? "")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#paradaModal" @onclick="MostrarFormularioNuevaParada">
+                        <span class="bi bi-plus-circle"></span> Nueva Parada
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Orden</th>
+                                <th>Nombre</th>
+                                <th>Ciudad</th>
+                                <th>Dirección</th>
+                                <th>Tiempo desde inicio</th>
+                                <th style="width: 120px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var parada in paradasRuta.OrderBy(p => p.Orden))
+                            {
+                                <tr>
+                                    <td><strong>@parada.Orden</strong></td>
+                                    <td>@parada.Nombre</td>
+                                    <td>@parada.Ciudad</td>
+                                    <td>@parada.Direccion</td>
+                                    <td>@FormatearDuracion(parada.TiempoDesdeInicio)</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#paradaModal" @onclick="() => EditarParada(parada)" title="Editar">
+                                            <i class="bi bi-pencil-fill"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarParada(parada.Id)" title="Eliminar">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (!paradasRuta.Any())
+                    {
+                        <p class="text-center text-muted py-3">Esta ruta no tiene paradas configuradas</p>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Ruta -->
+<div class="modal fade" id="rutaModal" tabindex="-1" aria-labelledby="rutaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header text-white" style="background-color: #FF9800;">
+                <h5 class="modal-title" id="rutaModalLabel">@(rutaSeleccionada2.Id == 0 ? "Nueva Ruta" : "Editar Ruta")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Nombre de la Ruta *</label>
+                        <input type="text" class="form-control" @bind="rutaSeleccionada2.Nombre" placeholder="Ej: Madrid - Barcelona Express" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Origen *</label>
+                        <input type="text" class="form-control" @bind="rutaSeleccionada2.Origen" placeholder="Ciudad de origen" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Destino *</label>
+                        <input type="text" class="form-control" @bind="rutaSeleccionada2.Destino" placeholder="Ciudad de destino" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Distancia (km) *</label>
+                        <input type="number" step="0.1" class="form-control" @bind="rutaSeleccionada2.DistanciaKm" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Duración (horas) *</label>
+                        <input type="number" step="0.5" class="form-control" @bind="duracionHoras" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Precio Base (€) *</label>
+                        <input type="number" step="0.01" class="form-control" @bind="rutaSeleccionada2.PrecioBase" />
+                    </div>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Activa" id="checkActiva">
+                    <label class="form-check-label" for="checkActiva">
+                        Ruta Activa
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarRuta">
+                    <i class="bi bi-save"></i> Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Parada -->
+<div class="modal fade" id="paradaModal" tabindex="-1" aria-labelledby="paradaModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="paradaModalLabel">@(paradaSeleccionada.Id == 0 ? "Nueva Parada" : "Editar Parada")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Orden *</label>
+                    <input type="number" class="form-control" @bind="paradaSeleccionada.Orden" />
+                    <small class="text-muted">Orden de la parada en la ruta</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre *</label>
+                    <input type="text" class="form-control" @bind="paradaSeleccionada.Nombre" placeholder="Ej: Estación Central" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Ciudad *</label>
+                    <input type="text" class="form-control" @bind="paradaSeleccionada.Ciudad" placeholder="Ej: Madrid" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Dirección *</label>
+                    <input type="text" class="form-control" @bind="paradaSeleccionada.Direccion" placeholder="Ej: Calle Principal 123" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tiempo desde inicio (horas) *</label>
+                    <input type="number" step="0.5" class="form-control" @bind="tiempoDesdeInicioHoras" />
+                    <small class="text-muted">Tiempo estimado desde el inicio de la ruta</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarParada">
+                    <i class="bi bi-save"></i> Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Ruta> rutas = new();
+    private List<Parada> todasLasParadas = new();
+    private List<Parada> paradasRuta = new();
+    private Ruta rutaSeleccionada2 = new();
+    private Parada paradaSeleccionada = new();
+    private double duracionHoras = 0;
+    private double tiempoDesdeInicioHoras = 0;
+    private Ruta? rutaSeleccionada;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarRutas();
+        await CargarParadas();
+    }
+
+    private async Task CargarRutas()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        rutas = await context.Rutas.ToListAsync();
+    }
+
+    private async Task CargarParadas()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        todasLasParadas = await context.Paradas.ToListAsync();
+    }
+
+    private void MostrarFormularioNuevo()
+    {
+        rutaSeleccionada2 = new Ruta { Activa = true };
+        duracionHoras = 0;
+    }
+
+    private void EditarRuta(Ruta ruta)
+    {
+        rutaSeleccionada2 = new Ruta
+        {
+            Id = ruta.Id,
+            Nombre = ruta.Nombre,
+            Origen = ruta.Origen,
+            Destino = ruta.Destino,
+            DistanciaKm = ruta.DistanciaKm,
+            DuracionEstimada = ruta.DuracionEstimada,
+            PrecioBase = ruta.PrecioBase,
+            Activa = ruta.Activa
+        };
+        duracionHoras = ruta.DuracionEstimada.TotalHours;
+    }
+
+    private async Task GuardarRuta()
+    {
+        rutaSeleccionada2.DuracionEstimada = TimeSpan.FromHours(duracionHoras);
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (rutaSeleccionada2.Id == 0)
+        {
+            context.Rutas.Add(rutaSeleccionada2);
+        }
+        else
+        {
+            context.Rutas.Update(rutaSeleccionada2);
+        }
+        
+        await context.SaveChangesAsync();
+        await CargarRutas();
+
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('rutaModal')).hide()");
+        StateHasChanged();
+    }
+
+    private async Task EliminarRuta(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var ruta = await context.Rutas.FindAsync(id);
+        if (ruta != null)
+        {
+            context.Rutas.Remove(ruta);
+            await context.SaveChangesAsync();
+            await CargarRutas();
+            StateHasChanged();
+        }
+    }
+
+    private void VerParadas(Ruta ruta)
+    {
+        rutaSeleccionada = ruta;
+        paradasRuta = todasLasParadas.Where(p => p.RutaId == ruta.Id).ToList();
+    }
+
+    private void MostrarFormularioNuevaParada()
+    {
+        if (rutaSeleccionada != null)
+        {
+            paradaSeleccionada = new Parada
+            {
+                RutaId = rutaSeleccionada.Id,
+                Orden = paradasRuta.Any() ? paradasRuta.Max(p => p.Orden) + 1 : 1
+            };
+            tiempoDesdeInicioHoras = 0;
+        }
+    }
+
+    private void EditarParada(Parada parada)
+    {
+        paradaSeleccionada = new Parada
+        {
+            Id = parada.Id,
+            RutaId = parada.RutaId,
+            Nombre = parada.Nombre,
+            Ciudad = parada.Ciudad,
+            Direccion = parada.Direccion,
+            Orden = parada.Orden,
+            TiempoDesdeInicio = parada.TiempoDesdeInicio
+        };
+        tiempoDesdeInicioHoras = parada.TiempoDesdeInicio.TotalHours;
+    }
+
+    private async Task GuardarParada()
+    {
+        paradaSeleccionada.TiempoDesdeInicio = TimeSpan.FromHours(tiempoDesdeInicioHoras);
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (paradaSeleccionada.Id == 0)
+        {
+            context.Paradas.Add(paradaSeleccionada);
+        }
+        else
+        {
+            context.Paradas.Update(paradaSeleccionada);
+        }
+        
+        await context.SaveChangesAsync();
+        await CargarParadas();
+        
+        if (rutaSeleccionada != null)
+        {
+            paradasRuta = todasLasParadas.Where(p => p.RutaId == rutaSeleccionada.Id).ToList();
+        }
+
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('paradaModal')).hide()");
+        StateHasChanged();
+    }
+
+    private async Task EliminarParada(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var parada = await context.Paradas.FindAsync(id);
+        if (parada != null)
+        {
+            context.Paradas.Remove(parada);
+            await context.SaveChangesAsync();
+            await CargarParadas();
+            
+            if (rutaSeleccionada != null)
+            {
+                paradasRuta = todasLasParadas.Where(p => p.RutaId == rutaSeleccionada.Id).ToList();
+            }
+            
+            StateHasChanged();
+        }
+    }
+
+    private string FormatearDuracion(TimeSpan duracion)
+    {
+        if (duracion.TotalHours < 1)
+            return $"{duracion.Minutes} min";
+        
+        var horas = (int)duracion.TotalHours;
+        var minutos = duracion.Minutes;
+        
+        if (minutos > 0)
+            return $"{horas}h {minutos}m";
+        
+        return $"{horas}h";
+    }
+}

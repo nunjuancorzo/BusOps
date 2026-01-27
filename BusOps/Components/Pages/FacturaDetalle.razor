@@ -1,0 +1,428 @@
+@page "/facturas/nuevo"
+@page "/facturas/{Id:int}"
+@using BusOps.Models
+@using BusOps.Helpers
+@using BusOps.Data
+@using BusOps.Services
+@using Microsoft.EntityFrameworkCore
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject IJSRuntime JSRuntime
+@inject EmailService EmailService
+@inject FacturaPdfService FacturaPdfService
+@rendermode InteractiveServer
+
+<PageTitle>@(Id == 0 ? "Nueva Factura" : "Editar Factura") - BusOps</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@(Id == 0 ? "Nueva Factura" : "Editar Factura")</h1>
+    <div class="d-flex gap-2">
+        @if (Id > 0)
+        {
+            <button class="btn btn-success" @onclick="EnviarPorEmail" title="Enviar por Email">
+                <i class="bi bi-envelope-fill"></i> Enviar Email
+            </button>
+            <button class="btn btn-info" @onclick="Imprimir" title="Imprimir">
+                <i class="bi bi-printer-fill"></i> Imprimir
+            </button>
+        }
+        <button class="btn btn-outline-secondary" @onclick="Volver">
+            <i class="bi bi-arrow-left"></i> Volver
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Número de Factura *</label>
+                <input type="text" class="form-control" @bind="factura.NumeroFactura" placeholder="FAC-2025-001" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Fecha Emisión *</label>
+                <input type="date" class="form-control" @bind="factura.FechaEmision" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Fecha Vencimiento *</label>
+                <input type="date" class="form-control" @bind="factura.FechaVencimiento" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Cliente *</label>
+                <select class="form-select" @bind="factura.ClienteId">
+                    <option value="0">-- Seleccione un cliente --</option>
+                    @foreach (var cliente in clientes)
+                    {
+                        var nombre = cliente.Tipo == TipoCliente.Particular 
+                            ? $"{cliente.Nombre} {cliente.Apellidos}" 
+                            : cliente.NombreEmpresa;
+                        <option value="@cliente.Id">@nombre - @cliente.NIF</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Concepto</label>
+                <textarea class="form-control" rows="2" @bind="factura.Concepto" placeholder="Descripción del servicio facturado"></textarea>
+            </div>
+        </div>
+        
+        <hr />
+        <h5 class="mb-3">Importes y Cálculos</h5>
+        
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Base Imponible (€) *</label>
+                <input type="number" step="0.01" class="form-control" @bind="factura.BaseImponible" @bind:event="oninput" @onchange="CalcularTotal" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">IVA (%) *</label>
+                <input type="number" step="0.01" class="form-control" @bind="factura.PorcentajeIVA" @bind:event="oninput" @onchange="CalcularTotal" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Importe IVA (€)</label>
+                <input type="number" step="0.01" class="form-control" value="@factura.ImporteIVA.ToString("F2")" readonly />
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Cargos Adicionales (€)</label>
+                <input type="number" step="0.01" class="form-control" @bind="factura.CargosAdicionales" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                <small class="text-muted">Gastos de envío, gestión, etc.</small>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Concepto de Cargos</label>
+                <input type="text" class="form-control" @bind="factura.ConceptoCargos" placeholder="Ej: Gastos de gestión" />
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Retención (%)</label>
+                <input type="number" step="0.01" class="form-control" @bind="factura.PorcentajeRetencion" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                <small class="text-muted">Retención IRPF (opcional)</small>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Importe Retención (€)</label>
+                <input type="number" step="0.01" class="form-control" value="@factura.ImporteRetencion.ToString("F2")" readonly />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label fw-bold">Total (€)</label>
+                <input type="number" step="0.01" class="form-control fw-bold" value="@factura.Total.ToString("F2")" readonly style="font-size: 1.2rem; background-color: #f0f8ff;" />
+            </div>
+        </div>
+        
+        <div class="alert alert-info" role="alert">
+            <small>
+                <strong>Cálculo:</strong> Base Imponible (@factura.BaseImponible.ToString("C2")) + IVA (@factura.ImporteIVA.ToString("C2")) + Cargos (@factura.CargosAdicionales.ToString("C2")) - Retención (@factura.ImporteRetencion.ToString("C2")) = <strong>@factura.Total.ToString("C2")</strong>
+            </small>
+        </div>
+        
+        <hr />
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Estado *</label>
+                <select class="form-select" @bind="factura.Estado">
+                    @foreach (var estado in Enum.GetValues<EstadoFactura>())
+                    {
+                        <option value="@estado">@estado.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Forma de Pago</label>
+                <select class="form-select" @bind="factura.FormaPago">
+                    @foreach (var forma in Enum.GetValues<FormaPago>())
+                    {
+                        <option value="@forma">@forma.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Observaciones</label>
+                <textarea class="form-control" rows="3" @bind="factura.Observaciones" placeholder="Notas adicionales..."></textarea>
+            </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="Guardar">
+                <i class="bi bi-save"></i> Guardar
+            </button>
+            <button class="btn btn-secondary" @onclick="Volver">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Factura factura = new();
+    private List<Cliente> clientes = new();
+    private ConfiguracionEmpresa? configuracionEmpresa;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+        
+        if (Id > 0)
+        {
+            await CargarFactura();
+        }
+        else
+        {
+            await InicializarNuevaFactura();
+        }
+    }
+
+    private async Task CargarDatos()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        clientes = await context.Clientes.ToListAsync();
+        configuracionEmpresa = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+    }
+
+    private async Task CargarFactura()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        var facturaDb = await context.Facturas
+            .Include(f => f.Cliente)
+            .Include(f => f.Lineas)
+            .FirstOrDefaultAsync(f => f.Id == Id);
+        
+        if (facturaDb != null)
+        {
+            factura = facturaDb;
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/facturas");
+        }
+    }
+
+    private async Task InicializarNuevaFactura()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        // Obtener la configuración para la serie de factura
+        var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+        string serie = config?.SerieFactura ?? "FAC";
+        
+        // Obtener el último número de factura de este año
+        int anioActual = DateTime.Now.Year;
+        var ultimaFactura = await context.Facturas
+            .Where(f => f.FechaEmision.Year == anioActual)
+            .OrderByDescending(f => f.Id)
+            .FirstOrDefaultAsync();
+        
+        int siguienteNumero = 1;
+        if (ultimaFactura != null)
+        {
+            var partes = ultimaFactura.NumeroFactura.Split('-');
+            if (partes.Length >= 3 && int.TryParse(partes[2], out int numero))
+            {
+                siguienteNumero = numero + 1;
+            }
+        }
+        
+        string numeroFactura = $"{serie}-{anioActual}-{siguienteNumero:D3}";
+        decimal ivaPorDefecto = config?.IVAPorDefecto ?? 21m;
+        
+        factura = new Factura 
+        { 
+            NumeroFactura = numeroFactura,
+            FechaEmision = DateTime.Now,
+            FechaVencimiento = DateTime.Now.AddDays(30),
+            Estado = EstadoFactura.Borrador,
+            PorcentajeIVA = ivaPorDefecto
+        };
+    }
+
+    private void CalcularTotal()
+    {
+        // Calcular IVA
+        var iva = factura.BaseImponible * (factura.PorcentajeIVA / 100);
+        factura.ImporteIVA = iva;
+        
+        // Calcular retención
+        var retencion = factura.BaseImponible * (factura.PorcentajeRetencion / 100);
+        factura.ImporteRetencion = retencion;
+        
+        // Calcular total: Base + IVA + Cargos - Retención
+        factura.Total = factura.BaseImponible + iva + factura.CargosAdicionales - retencion;
+    }
+
+    private async Task Guardar()
+    {
+        CalcularTotal();
+        
+        using var context = await DbFactory.CreateDbContextAsync();
+        
+        if (factura.Id == 0)
+        {
+            context.Facturas.Add(factura);
+        }
+        else
+        {
+            context.Facturas.Update(factura);
+        }
+        
+        await context.SaveChangesAsync();
+        NavigationManager.NavigateTo("/facturas");
+    }
+
+    private void Volver()
+    {
+        NavigationManager.NavigateTo("/facturas");
+    }
+
+    private async Task Imprimir()
+    {
+        if (factura.Id == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de imprimirla.");
+            return;
+        }
+
+        // Cargar factura completa con cliente y líneas
+        using var context = await DbFactory.CreateDbContextAsync();
+        var facturaCompleta = await context.Facturas
+            .Include(f => f.Cliente)
+            .Include(f => f.Lineas)
+            .FirstOrDefaultAsync(f => f.Id == factura.Id);
+
+        if (facturaCompleta == null || facturaCompleta.Cliente == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error al cargar los datos de la factura.");
+            return;
+        }
+
+        var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+
+        // Generar el PDF
+        byte[] pdfBytes = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config);
+
+        // Convertir a Base64 y abrir en nueva ventana
+        string base64Pdf = Convert.ToBase64String(pdfBytes);
+        await JSRuntime.InvokeVoidAsync("eval", $@"
+            var byteCharacters = atob('{base64Pdf}');
+            var byteNumbers = new Array(byteCharacters.length);
+            for (var i = 0; i < byteCharacters.length; i++) {{
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }}
+            var byteArray = new Uint8Array(byteNumbers);
+            var blob = new Blob([byteArray], {{type: 'application/pdf'}});
+            var url = URL.createObjectURL(blob);
+            var win = window.open(url, '_blank');
+            win.onload = function() {{
+                win.print();
+            }};
+        ");
+    }
+
+    private async Task EnviarPorEmail()
+    {
+        if (factura.Id == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de enviarla por email.");
+            return;
+        }
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        var facturaCompleta = await context.Facturas
+            .Include(f => f.Cliente)
+            .Include(f => f.Lineas)
+            .FirstOrDefaultAsync(f => f.Id == factura.Id);
+
+        if (facturaCompleta?.Cliente == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No se puede enviar: el cliente no está configurado.");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(facturaCompleta.Cliente.Email))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"El cliente no tiene email configurado.");
+            return;
+        }
+
+        var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+        
+        string nombreCliente = facturaCompleta.Cliente.Tipo == TipoCliente.Particular
+            ? $"{facturaCompleta.Cliente.Nombre} {facturaCompleta.Cliente.Apellidos}"
+            : facturaCompleta.Cliente.NombreEmpresa ?? "";
+
+        string cuerpoEmail = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #007bff; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+        .factura-info { background-color: white; padding: 15px; margin: 15px 0; border-left: 4px solid #007bff; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>" + (config?.NombreEmpresa ?? "BusOps Transportes") + @"</h1>
+        </div>
+        <div class='content'>
+            <h2>Estimado/a " + nombreCliente + @",</h2>
+            <p>Adjunto encontrará la factura solicitada con los siguientes detalles:</p>
+            
+            <div class='factura-info'>
+                <p><strong>Número de Factura:</strong> " + facturaCompleta.NumeroFactura + @"</p>
+                <p><strong>Fecha de Emisión:</strong> " + facturaCompleta.FechaEmision.ToString("dd/MM/yyyy") + @"</p>
+                <p><strong>Fecha de Vencimiento:</strong> " + (facturaCompleta.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "N/A") + @"</p>
+                <p><strong>Importe Total:</strong> " + facturaCompleta.Total.ToString("C2") + @"</p>
+            </div>
+            
+            <p>Le agradecemos su confianza en nuestros servicios.</p>
+            <p>Para cualquier consulta, no dude en contactarnos.</p>
+        </div>
+        <div class='footer'>
+            <p>" + (config?.NombreEmpresa ?? "BusOps Transportes S.L.") + @"</p>
+            <p>" + (config?.Direccion ?? "") + @" | Tel: " + (config?.Telefono ?? "") + @"</p>
+            <p>Email: " + (config?.Email ?? "") + @"</p>
+        </div>
+    </div>
+</body>
+</html>";
+
+        byte[] pdfFactura = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config);
+
+        bool enviado = await EmailService.EnviarFacturaPorEmailAsync(
+            facturaCompleta.Cliente.Email,
+            $"Factura {facturaCompleta.NumeroFactura} - {config?.NombreEmpresa ?? "BusOps"}",
+            cuerpoEmail,
+            pdfFactura,
+            $"Factura_{facturaCompleta.NumeroFactura}.pdf"
+        );
+
+        if (enviado)
+        {
+            facturaCompleta.Estado = EstadoFactura.Enviada;
+            context.Facturas.Update(facturaCompleta);
+            await context.SaveChangesAsync();
+            
+            factura.Estado = EstadoFactura.Enviada;
+            
+            await JSRuntime.InvokeVoidAsync("alert", $"Factura enviada correctamente a {facturaCompleta.Cliente.Email}");
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error al enviar el email. Verifique la configuración.");
+        }
+    }
+}
