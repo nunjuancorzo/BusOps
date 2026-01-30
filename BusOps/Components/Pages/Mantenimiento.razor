@@ -376,6 +376,17 @@
             context.MantenimientosAutobus.Update(mantenimientoSeleccionado);
         }
         
+        // Cambiar el estado del autobús a EnMantenimiento
+        if (mantenimientoSeleccionado.AutobusId > 0)
+        {
+            var autobus = await context.Autobuses.FindAsync(mantenimientoSeleccionado.AutobusId);
+            if (autobus != null)
+            {
+                autobus.Estado = EstadoAutobus.EnMantenimiento;
+                context.Autobuses.Update(autobus);
+            }
+        }
+        
         await context.SaveChangesAsync();
         await CargarDatos();
 

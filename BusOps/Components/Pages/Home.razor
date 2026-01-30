@@ -47,10 +47,13 @@
 
     private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        if (datosInicializados && (e.Location.EndsWith("/") || e.Location.Contains("localhost:5277/#")))
+        if (datosInicializados && (e.Location.EndsWith("/") || e.Location.Contains("/#") || e.Location.Contains("localhost")))
         {
+            Console.WriteLine($"OnLocationChanged: Recargando datos y mapa. URL: {e.Location}");
             await CargarDatosDesdeBaseDatos();
             await InvokeAsync(StateHasChanged);
+            // Pequeño delay para asegurar que el DOM está listo
+            await Task.Delay(100);
             await InicializarMapa();
         }
     }
@@ -489,6 +492,20 @@
     {
         try
         {
+            // Verificar si el contenedor del mapa existe antes de intentar inicializarlo
+            var contenedorExiste = await JSRuntime.InvokeAsync<bool>("verificarContenedorMapa");
+            if (!contenedorExiste)
+            {
+                Console.WriteLine("Contenedor del mapa no encontrado, reintentando en 200ms...");
+                await Task.Delay(200);
+                contenedorExiste = await JSRuntime.InvokeAsync<bool>("verificarContenedorMapa");
+                if (!contenedorExiste)
+                {
+                    Console.WriteLine("Contenedor del mapa aún no disponible.");
+                    return;
+                }
+            }
+
             var viajesParaMapa = proximosViajes.Take(5).Select(v => new
             {
                 id = v.Id,
@@ -547,6 +564,12 @@
 <script>
     let mapaRutas = null;
 
+    // Función para verificar si el contenedor del mapa existe
+    window.verificarContenedorMapa = function () {
+        const contenedor = document.getElementById('map');
+        return contenedor !== null;
+    };
+
     // Coordenadas aproximadas de ciudades españolas principales
     const ciudadesEspana = {
         'Madrid': [40.4168, -3.7038],
@@ -574,7 +597,19 @@
     window.inicializarMapaRutas = function (viajes) {
         // Destruir mapa existente si lo hay
         if (mapaRutas) {
-            mapaRutas.remove();
+            try {
+                mapaRutas.remove();
+                mapaRutas = null;
+            } catch (e) {
+                console.log("Error al destruir mapa anterior:", e);
+            }
+        }
+
+        // Verificar que el contenedor existe
+        const contenedor = document.getElementById('map');
+        if (!contenedor) {
+            console.error("Map container not found.");
+            return;
         }
 
         // Crear nuevo mapa centrado en España

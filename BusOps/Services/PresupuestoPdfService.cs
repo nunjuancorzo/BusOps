@@ -16,17 +16,29 @@ public class PresupuestoPdfService
         _webHostEnvironment = webHostEnvironment;
     }
 
-    public byte[] GenerarPresupuestoPdf(Presupuesto presupuesto, Cliente cliente, ConfiguracionEmpresa? config)
+    public byte[] GenerarPresupuestoPdf(Presupuesto presupuesto, Cliente cliente, ConfiguracionEmpresa? config, bool paraEmail = true)
     {
         QuestPDF.Settings.License = LicenseType.Community;
+
+        // Tamaños según destino
+        // Email: tamaño normal para buena visualización en pantalla con MUCHO espacio
+        // Impresión: más compacto para que quepa en una página
+        var margen = paraEmail ? 50 : 20;
+        var fuenteBase = paraEmail ? 11 : 8;
+        var fuenteGrande = paraEmail ? 16 : 10;
+        var fuenteMedia = paraEmail ? 13 : 9;
+        var fuentePequena = paraEmail ? 10 : 7;
+        var fuenteMuyPequena = paraEmail ? 9 : 6;
+        var logoAncho = paraEmail ? 120 : 60;
+        var logoAlto = paraEmail ? 60 : 30;
 
         var documento = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(10);
-                page.DefaultTextStyle(x => x.FontSize(5));
+                page.Margin(margen);
+                page.DefaultTextStyle(x => x.FontSize(fuenteBase));
 
                 page.Header().Column(column =>
                 {
@@ -46,24 +58,24 @@ public class PresupuestoPdfService
                                 
                                 if (File.Exists(logoPath))
                                 {
-                                    col.Item().MaxWidth(40).MaxHeight(20).Image(logoPath);
+                                    col.Item().MaxWidth(logoAncho).MaxHeight(logoAlto).Image(logoPath);
                                     col.Item().PaddingTop(1);
                                 }
                             }
                             
                             col.Item().Text(config?.NombreEmpresa ?? "BusOps Transportes S.L.")
-                                .FontSize(6).Bold().FontColor("#003366");
-                            col.Item().Text(config?.Direccion ?? "Calle Principal 123").FontSize(4);
-                            col.Item().Text($"{config?.CodigoPostal ?? "28001"} {config?.Ciudad ?? "Madrid"}").FontSize(4);
-                            col.Item().Text($"NIF: {config?.NIF ?? "B12345678"}").FontSize(4);
-                            col.Item().Text($"Tel: {config?.Telefono ?? "910123456"}").FontSize(4);
+                                .FontSize(fuenteMedia).Bold().FontColor("#003366");
+                            col.Item().Text(config?.Direccion ?? "Calle Principal 123").FontSize(fuentePequena);
+                            col.Item().Text($"{config?.CodigoPostal ?? "28001"} {config?.Ciudad ?? "Madrid"}").FontSize(fuentePequena);
+                            col.Item().Text($"NIF: {config?.NIF ?? "B12345678"}").FontSize(fuentePequena);
+                            col.Item().Text($"Tel: {config?.Telefono ?? "910123456"}").FontSize(fuentePequena);
                             if (!string.IsNullOrEmpty(config?.Email))
                             {
-                                col.Item().Text($"Email: {config.Email}").FontSize(4);
+                                col.Item().Text($"Email: {config.Email}").FontSize(fuentePequena);
                             }
                             if (!string.IsNullOrEmpty(config?.Web))
                             {
-                                col.Item().Text($"Web: {config.Web}").FontSize(4);
+                                col.Item().Text($"Web: {config.Web}").FontSize(fuentePequena);
                             }
                         });
 
@@ -73,8 +85,8 @@ public class PresupuestoPdfService
                             // Encabezado PRESUPUESTO
                             col.Item().Background("#4CAF50").Padding(2).Column(c =>
                             {
-                                c.Item().AlignCenter().Text("PRESUPUESTO").FontSize(7).Bold().FontColor(Colors.White);
-                                c.Item().AlignCenter().Text(presupuesto.NumeroPresupuesto).FontSize(5).FontColor(Colors.White);
+                                c.Item().AlignCenter().Text("PRESUPUESTO").FontSize(fuenteGrande).Bold().FontColor(Colors.White);
+                                c.Item().AlignCenter().Text(presupuesto.NumeroPresupuesto).FontSize(fuenteBase).FontColor(Colors.White);
                             });
                             
                             col.Item().PaddingTop(1);
@@ -82,52 +94,52 @@ public class PresupuestoPdfService
                             // Cuadro de datos del cliente
                             col.Item().Background(Colors.Grey.Lighten3).Padding(2).Column(c =>
                             {
-                                c.Item().Text("CLIENTE").Bold().FontSize(5).FontColor("#4CAF50");
+                                c.Item().Text("CLIENTE").Bold().FontSize(fuenteBase).FontColor("#4CAF50");
                                 
                                 if (cliente.Tipo == TipoCliente.Particular)
                                 {
-                                    c.Item().Text($"{cliente.Nombre} {cliente.Apellidos}").FontSize(5).Bold();
+                                    c.Item().Text($"{cliente.Nombre} {cliente.Apellidos}").FontSize(fuenteBase).Bold();
                                 }
                                 else
                                 {
-                                    c.Item().Text(cliente.NombreEmpresa ?? "").FontSize(5).Bold();
+                                    c.Item().Text(cliente.NombreEmpresa ?? "").FontSize(fuenteBase).Bold();
                                     if (!string.IsNullOrEmpty(cliente.Nombre))
                                     {
-                                        c.Item().Text($"Att: {cliente.Nombre}").FontSize(4);
+                                        c.Item().Text($"Att: {cliente.Nombre}").FontSize(fuentePequena);
                                     }
                                 }
                                 
-                                c.Item().Text($"NIF/CIF: {cliente.NIF}").FontSize(4);
+                                c.Item().Text($"NIF/CIF: {cliente.NIF}").FontSize(fuentePequena);
                                 if (!string.IsNullOrEmpty(cliente.Direccion))
                                 {
-                                    c.Item().Text(cliente.Direccion).FontSize(4);
+                                    c.Item().Text(cliente.Direccion).FontSize(fuentePequena);
                                 }
                                 if (!string.IsNullOrEmpty(cliente.CodigoPostal) || !string.IsNullOrEmpty(cliente.Ciudad))
                                 {
-                                    c.Item().Text($"{cliente.CodigoPostal} {cliente.Ciudad}").FontSize(4);
+                                    c.Item().Text($"{cliente.CodigoPostal} {cliente.Ciudad}").FontSize(fuentePequena);
                                 }
                                 if (!string.IsNullOrEmpty(cliente.Telefono))
                                 {
-                                    c.Item().Text($"Tel: {cliente.Telefono}").FontSize(4);
+                                    c.Item().Text($"Tel: {cliente.Telefono}").FontSize(fuentePequena);
                                 }
                                 if (!string.IsNullOrEmpty(cliente.Email))
                                 {
-                                    c.Item().Text($"Email: {cliente.Email}").FontSize(4);
+                                    c.Item().Text($"Email: {cliente.Email}").FontSize(fuentePequena);
                                 }
                             });
                         });
                     });
 
-                    column.Item().PaddingTop(2);
+                    column.Item().PaddingTop(paraEmail ? 10 : 2);
                     
                     // Información del presupuesto
-                    column.Item().Background(Colors.Grey.Lighten4).Padding(1).Row(row =>
+                    column.Item().Background(Colors.Grey.Lighten4).Padding(paraEmail ? 8 : 1).Row(row =>
                     {
-                        row.AutoItem().Text($"Fecha Emisión: {presupuesto.FechaEmision:dd/MM/yyyy}").FontSize(4);
-                        row.AutoItem().PaddingLeft(5).Text($"Válido hasta: {presupuesto.FechaValidez?.ToString("dd/MM/yyyy") ?? "N/A"}").FontSize(4);
+                        row.AutoItem().Text($"Fecha Emisión: {presupuesto.FechaEmision:dd/MM/yyyy}").FontSize(fuentePequena);
+                        row.AutoItem().PaddingLeft(paraEmail ? 15 : 5).Text($"Válido hasta: {presupuesto.FechaValidez?.ToString("dd/MM/yyyy") ?? "N/A"}").FontSize(fuentePequena);
                     });
 
-                    column.Item().PaddingVertical(2).LineHorizontal(1).LineColor(Colors.Grey.Medium);
+                    column.Item().PaddingVertical(paraEmail ? 10 : 2).LineHorizontal(1).LineColor(Colors.Grey.Medium);
                 });
 
                 page.Content().Column(column =>
@@ -136,8 +148,8 @@ public class PresupuestoPdfService
                     if (!string.IsNullOrEmpty(presupuesto.Concepto))
                     {
                         column.Item().Background("#fffbf0").BorderLeft(2).BorderColor("#FFC107")
-                            .Padding(2).Text($"Concepto: {presupuesto.Concepto}").FontSize(5).Italic();
-                        column.Item().PaddingVertical(1);
+                            .Padding(paraEmail ? 10 : 2).Text($"Concepto: {presupuesto.Concepto}").FontSize(fuenteBase).Italic();
+                        column.Item().PaddingVertical(paraEmail ? 8 : 1);
                     }
 
                     // Tabla de líneas
@@ -153,33 +165,35 @@ public class PresupuestoPdfService
 
                         table.Header(header =>
                         {
-                            header.Cell().Background("#4CAF50").Padding(1)
-                                .Text("Descripción").Bold().FontColor(Colors.White).FontSize(5);
-                            header.Cell().Background("#4CAF50").Padding(1)
-                                .AlignCenter().Text("Cant.").Bold().FontColor(Colors.White).FontSize(5);
-                            header.Cell().Background("#4CAF50").Padding(1)
-                                .AlignRight().Text("Precio Unit.").Bold().FontColor(Colors.White).FontSize(5);
-                            header.Cell().Background("#4CAF50").Padding(1)
-                                .AlignRight().Text("Subtotal").Bold().FontColor(Colors.White).FontSize(5);
+                            var headerPadding = paraEmail ? 6 : 1;
+                            header.Cell().Background("#4CAF50").Padding(headerPadding)
+                                .Text("Descripción").Bold().FontColor(Colors.White).FontSize(fuenteBase);
+                            header.Cell().Background("#4CAF50").Padding(headerPadding)
+                                .AlignCenter().Text("Cant.").Bold().FontColor(Colors.White).FontSize(fuenteBase);
+                            header.Cell().Background("#4CAF50").Padding(headerPadding)
+                                .AlignRight().Text("Precio Unit.").Bold().FontColor(Colors.White).FontSize(fuenteBase);
+                            header.Cell().Background("#4CAF50").Padding(headerPadding)
+                                .AlignRight().Text("Subtotal").Bold().FontColor(Colors.White).FontSize(fuenteBase);
                         });
 
+                        var cellPadding = paraEmail ? 4 : 1;
                         foreach (var linea in presupuesto.Lineas)
                         {
-                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1)
+                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(cellPadding)
                                 .Column(col =>
                                 {
-                                    col.Item().Text(linea.Descripcion).Bold().FontSize(5);
+                                    col.Item().Text(linea.Descripcion).Bold().FontSize(fuenteBase);
                                     if (linea.Tipo == TipoLineaPresupuesto.CargoAdicional)
                                     {
-                                        col.Item().Text("(Cargo Adicional)").FontSize(4).Italic().FontColor(Colors.Orange.Medium);
+                                        col.Item().Text("(Cargo Adicional)").FontSize(fuentePequena).Italic().FontColor(Colors.Orange.Medium);
                                     }
                                 });
-                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1)
-                                .AlignCenter().Text(linea.Cantidad.ToString()).FontSize(5);
-                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1)
-                                .AlignRight().Text(linea.PrecioUnitario.ToString("C2")).FontSize(5);
-                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1)
-                                .AlignRight().Text(linea.Subtotal.ToString("C2")).Bold().FontSize(5);
+                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(cellPadding)
+                                .AlignCenter().Text(linea.Cantidad.ToString()).FontSize(fuenteBase);
+                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(cellPadding)
+                                .AlignRight().Text(linea.PrecioUnitario.ToString("C2")).FontSize(fuenteBase);
+                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(cellPadding)
+                                .AlignRight().Text(linea.Subtotal.ToString("C2")).Bold().FontSize(fuenteBase);
                         }
                         
                         // ImporteConcepto si existe
@@ -188,13 +202,13 @@ public class PresupuestoPdfService
                             table.Cell().Background("#f1f8e9").BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1)
                                 .Column(col =>
                                 {
-                                    col.Item().Text(presupuesto.ConceptoCargos).Bold().FontSize(5);
-                                    col.Item().Text("(Concepto Especial)").FontSize(4).Italic().FontColor(Colors.Green.Medium);
+                                    col.Item().Text(presupuesto.ConceptoCargos).Bold().FontSize(fuenteBase);
+                                    col.Item().Text("(Concepto Especial)").FontSize(fuentePequena).Italic().FontColor(Colors.Green.Medium);
                                 });
                             table.Cell().Background("#f1f8e9").BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1).Text("");
                             table.Cell().Background("#f1f8e9").BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1).Text("");
                             table.Cell().Background("#f1f8e9").BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(1)
-                                .AlignRight().Text(presupuesto.ImporteConcepto.ToString("C2")).Bold().FontSize(5);
+                                .AlignRight().Text(presupuesto.ImporteConcepto.ToString("C2")).Bold().FontSize(fuenteBase);
                         }
                     });
 
@@ -209,22 +223,22 @@ public class PresupuestoPdfService
                             columns.RelativeColumn(1);
                         });
 
-                        table.Cell().Padding(1).Text("Base Imponible:").Bold().FontSize(5);
-                        table.Cell().Padding(1).AlignRight().Text(presupuesto.BaseImponible.ToString("C2")).FontSize(5);
+                        table.Cell().Padding(1).Text("Base Imponible:").Bold().FontSize(fuenteBase);
+                        table.Cell().Padding(1).AlignRight().Text(presupuesto.BaseImponible.ToString("C2")).FontSize(fuenteBase);
 
-                        table.Cell().Padding(1).Text($"IVA ({presupuesto.PorcentajeIVA}%):").Bold().FontSize(5);
-                        table.Cell().Padding(1).AlignRight().Text(presupuesto.ImporteIVA.ToString("C2")).FontSize(5);
+                        table.Cell().Padding(1).Text($"IVA ({presupuesto.PorcentajeIVA}%):").Bold().FontSize(fuenteBase);
+                        table.Cell().Padding(1).AlignRight().Text(presupuesto.ImporteIVA.ToString("C2")).FontSize(fuenteBase);
 
                         // Retención (si existe)
                         if (presupuesto.PorcentajeRetencion > 0)
                         {
-                            table.Cell().Padding(1).Text($"Retención IRPF ({presupuesto.PorcentajeRetencion}%):").Bold().FontColor(Colors.Red.Medium).FontSize(5);
-                            table.Cell().Padding(1).AlignRight().Text($"-{presupuesto.ImporteRetencion.ToString("C2")}").FontSize(5).FontColor(Colors.Red.Medium);
+                            table.Cell().Padding(1).Text($"Retención IRPF ({presupuesto.PorcentajeRetencion}%):").Bold().FontColor(Colors.Red.Medium).FontSize(fuenteBase);
+                            table.Cell().Padding(1).AlignRight().Text($"-{presupuesto.ImporteRetencion.ToString("C2")}").FontSize(fuenteBase).FontColor(Colors.Red.Medium);
                         }
 
-                        table.Cell().Background("#4CAF50").Padding(1).Text("TOTAL:").Bold().FontSize(6).FontColor(Colors.White);
+                        table.Cell().Background("#4CAF50").Padding(1).Text("TOTAL:").Bold().FontSize(fuenteMedia).FontColor(Colors.White);
                         table.Cell().Background("#4CAF50").Padding(1).AlignRight()
-                            .Text(presupuesto.Total.ToString("C2")).Bold().FontSize(6).FontColor(Colors.White);
+                            .Text(presupuesto.Total.ToString("C2")).Bold().FontSize(fuenteMedia).FontColor(Colors.White);
                     });
 
                     // Observaciones si existen
@@ -233,8 +247,8 @@ public class PresupuestoPdfService
                         column.Item().PaddingTop(2);
                         column.Item().Background(Colors.Grey.Lighten4).Padding(2).Column(col =>
                         {
-                            col.Item().Text("Observaciones:").Bold().FontSize(5).FontColor("#4CAF50");
-                            col.Item().Text(presupuesto.Observaciones).FontSize(4);
+                            col.Item().Text("Observaciones:").Bold().FontSize(fuenteBase).FontColor("#4CAF50");
+                            col.Item().Text(presupuesto.Observaciones).FontSize(fuentePequena);
                         });
                     }
                     
@@ -242,9 +256,9 @@ public class PresupuestoPdfService
                     column.Item().PaddingTop(2);
                     column.Item().Background("#e3f2fd").Padding(2).Column(col =>
                     {
-                        col.Item().Text("Condiciones del Presupuesto").Bold().FontSize(5).FontColor("#4CAF50");
+                        col.Item().Text("Condiciones del Presupuesto").Bold().FontSize(fuenteBase).FontColor("#4CAF50");
                         col.Item().Text("Este presupuesto es válido hasta la fecha indicada. Los precios incluyen IVA. Condiciones de pago según acuerdo.")
-                            .FontSize(4).FontColor(Colors.Grey.Darken1);
+                            .FontSize(fuenteMuyPequena).FontColor(Colors.Grey.Darken1);
                     });
                     
                     // Pie de página
@@ -252,11 +266,11 @@ public class PresupuestoPdfService
                         .PaddingTop(1).AlignCenter().Column(col =>
                         {
                             col.Item().Text($"Gracias por confiar en {config?.NombreEmpresa ?? "BusOps Transportes S.L."}")
-                                .FontSize(4).Italic().FontColor(Colors.Grey.Darken1);
+                                .FontSize(fuenteMuyPequena).Italic().FontColor(Colors.Grey.Darken1);
                             if (!string.IsNullOrEmpty(config?.IBAN))
                             {
                                 col.Item().Text($"Datos bancarios: IBAN {config.IBAN}")
-                                    .FontSize(4).FontColor(Colors.Grey.Darken1);
+                                    .FontSize(fuenteMuyPequena).FontColor(Colors.Grey.Darken1);
                             }
                         });
                 });

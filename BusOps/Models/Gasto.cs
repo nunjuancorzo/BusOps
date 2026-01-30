@@ -18,6 +18,11 @@ public class Gasto
     // Relación opcional con autobús
     public int? AutobusId { get; set; }
     public Autobus? Autobus { get; set; }
+    
+    // Documento adjunto
+    public string? DocumentoNombre { get; set; }
+    public byte[]? DocumentoContenido { get; set; }
+    public string? DocumentoTipo { get; set; } // MIME type
 }
 
 public enum TipoGasto

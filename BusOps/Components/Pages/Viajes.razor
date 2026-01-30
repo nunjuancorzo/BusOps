@@ -37,7 +37,7 @@
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Ruta *</label>
                         <div class="input-group">
-                            <select class="form-select" @bind="viajeSeleccionado!.RutaId">
+                            <select class="form-select" @bind="viajeSeleccionado!.RutaId" @bind:after="OnRutaSeleccionada">
                                 <option value="0">-- Seleccione una ruta --</option>
                                 @foreach (var ruta in rutas.Where(r => r.Activa))
                                 {
@@ -316,6 +316,20 @@
         };
         fechaHoraSalida = viaje.FechaHoraSalida;
         fechaHoraLlegadaEstimada = viaje.FechaHoraLlegadaEstimada;
+    }
+
+    private void OnRutaSeleccionada()
+    {
+        if (viajeSeleccionado.RutaId > 0)
+        {
+            // Buscar la ruta seleccionada y asignar su precio base
+            var rutaSeleccionada = rutas.FirstOrDefault(r => r.Id == viajeSeleccionado.RutaId);
+            
+            if (rutaSeleccionada != null)
+            {
+                viajeSeleccionado.PrecioViaje = rutaSeleccionada.PrecioBase;
+            }
+        }
     }
 
     private void OnAutobusSeleccionado()

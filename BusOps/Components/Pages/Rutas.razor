@@ -85,7 +85,7 @@
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#paradaModal" @onclick="MostrarFormularioNuevaParada">
+                    <button class="btn btn-sm btn-primary" @onclick="MostrarFormularioNuevaParada">
                         <span class="bi bi-plus-circle"></span> Nueva Parada
                     </button>
                 </div>
@@ -111,7 +111,7 @@
                                     <td>@parada.Direccion</td>
                                     <td>@FormatearDuracion(parada.TiempoDesdeInicio)</td>
                                     <td>
-                                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#paradaModal" @onclick="() => EditarParada(parada)" title="Editar">
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => EditarParada(parada)" title="Editar">
                                             <i class="bi bi-pencil-fill"></i>
                                         </button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarParada(parada.Id)" title="Eliminar">
@@ -324,7 +324,7 @@
         paradasRuta = todasLasParadas.Where(p => p.RutaId == ruta.Id).ToList();
     }
 
-    private void MostrarFormularioNuevaParada()
+    private async Task MostrarFormularioNuevaParada()
     {
         if (rutaSeleccionada != null)
         {
@@ -334,10 +334,11 @@
                 Orden = paradasRuta.Any() ? paradasRuta.Max(p => p.Orden) + 1 : 1
             };
             tiempoDesdeInicioHoras = 0;
+            await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('paradaModal')).show();");
         }
     }
 
-    private void EditarParada(Parada parada)
+    private async Task EditarParada(Parada parada)
     {
         paradaSeleccionada = new Parada
         {
@@ -350,6 +351,7 @@
             TiempoDesdeInicio = parada.TiempoDesdeInicio
         };
         tiempoDesdeInicioHoras = parada.TiempoDesdeInicio.TotalHours;
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('paradaModal')).show();");
     }
 
     private async Task GuardarParada()
@@ -375,7 +377,13 @@
             paradasRuta = todasLasParadas.Where(p => p.RutaId == rutaSeleccionada.Id).ToList();
         }
 
-        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('paradaModal')).hide()");
+        // Cerrar solo el modal de parada (el modal de info de paradas ya está abierto)
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            var paradaModal = bootstrap.Modal.getInstance(document.getElementById('paradaModal'));
+            if (paradaModal) {
+                paradaModal.hide();
+            }
+        ");
         StateHasChanged();
     }
 
