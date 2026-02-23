@@ -18,6 +18,10 @@ public class Reserva
     
     public int PasajeroId { get; set; }
     public Pasajero Pasajero { get; set; } = null!;
+    
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
 }
 
 public enum EstadoReserva

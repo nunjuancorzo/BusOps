@@ -1,10 +1,12 @@
 @page "/clientes"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using BusOps.Data
 @using BusOps.Models
 @using BusOps.Helpers
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>BusOps - Clientes</PageTitle>
@@ -56,10 +58,10 @@
     <div class="card-body">
         <div class="row">
             <div class="col-md-4">
-                <input type="text" class="form-control" placeholder="Buscar por nombre, NIF o email..." @bind="busqueda" @bind:event="oninput" />
+                <input type="text" class="form-control" placeholder="Buscar por nombre, NIF o email..." @bind="busqueda" @bind:event="oninput" @bind:after="ResetearPagina" />
             </div>
             <div class="col-md-3">
-                <select class="form-select" @bind="filtroTipo">
+                <select class="form-select" @bind="filtroTipo" @bind:after="ResetearPagina">
                     <option value="">Todos los tipos</option>
                     <option value="Particular">Particulares</option>
                     <option value="Empresa">Empresas</option>
@@ -67,7 +69,7 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <select class="form-select" @bind="filtroEstado">
+                <select class="form-select" @bind="filtroEstado" @bind:after="ResetearPagina">
                     <option value="">Todos los estados</option>
                     <option value="true">Activos</option>
                     <option value="false">Inactivos</option>
@@ -95,9 +97,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var cliente in ClientesFiltrados)
+                    @foreach (var cliente in ClientesPaginados)
                     {
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarClienteDobleClick(cliente)" title="Doble click para editar">
                             <td>
                                 <span class="badge @ObtenerClaseTipo(cliente.Tipo)">
                                     @cliente.Tipo.GetDisplayName()
@@ -148,6 +150,34 @@
                     }
                 </tbody>
             </table>
+
+            @if (TotalPaginas > 1)
+            {
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted">
+                        Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@(Math.Min(paginaActual * registrosPorPagina, ClientesFiltrados.Count)) de @ClientesFiltrados.Count resultados
+                    </div>
+                    <nav>
+                        <ul class="pagination mb-0">
+                            <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" style="cursor: pointer;">Anterior</a>
+                            </li>
+                            
+                            @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                            {
+                                var pagina = i;
+                                <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                    <a class="page-link" @onclick="() => CambiarPagina(pagina)" style="cursor: pointer;">@pagina</a>
+                                </li>
+                            }
+                            
+                            <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" style="cursor: pointer;">Siguiente</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            }
         </div>
     </div>
 </div>
@@ -156,7 +186,7 @@
 <div class="modal fade" id="clienteModal" tabindex="-1" aria-labelledby="clienteModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #2196F3;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #AB47BC;">
                 <h5 class="modal-title" id="clienteModalLabel">@(clienteSeleccionado.Id == 0 ? "Nuevo Cliente" : "Editar Cliente")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -250,6 +280,21 @@
                 </div>
 
                 <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Provincia</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.Provincia" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">País</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.Pais" placeholder="ESP" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Fax</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.Fax" />
+                    </div>
+                </div>
+
+                <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Teléfono *</label>
                         <input type="text" class="form-control" @bind="clienteSeleccionado.Telefono" />
@@ -267,7 +312,50 @@
                     </label>
                 </div>
 
-                <h6 class="mb-3 mt-4">Datos Financieros</h6>
+                <hr class="my-4" />
+                <h6 class="mb-3"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE</h6>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="clienteSeleccionado.ClienteFacturaE" id="clienteFacturaECheck">
+                            <label class="form-check-label" for="clienteFacturaECheck">
+                                <strong>Cliente FacturaE</strong>
+                            </label>
+                            <small class="text-muted d-block">Marque esta opción para clientes que requieren facturación electrónica (administraciones públicas, etc.). Se validarán todos los campos obligatorios al exportar.</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tipo de Persona</label>
+                        <select class="form-select" @bind="clienteSeleccionado.TipoPersona">
+                            <option value="@TipoPersona.Fisica">Física</option>
+                            <option value="@TipoPersona.Juridica">Jurídica</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tipo de Residencia</label>
+                        <select class="form-select" @bind="clienteSeleccionado.TipoResidencia">
+                            <option value="@TipoResidencia.Residente">Residente</option>
+                            <option value="@TipoResidencia.UnionEuropea">Unión Europea</option>
+                            <option value="@TipoResidencia.Extranjero">Extranjero</option>
+                        </select>
+                        <small class="text-muted">Normalmente "Residente" para clientes españoles</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Código INE</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.CodigoINE" placeholder="Para administraciones públicas" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Persona de Contacto (FacturaE)</label>
+                        <input type="text" class="form-control" @bind="clienteSeleccionado.PersonaContacto" />
+                    </div>
+                </div>
+
+                <hr class="my-4" />
+                <h6 class="mb-3"><i class="bi bi-credit-card"></i> Datos Financieros</h6>
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Cuenta Bancaria</label>
@@ -365,7 +453,7 @@
 <div class="modal fade" id="documentoModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header text-white" style="background-color: #2196F3;">
+            <div class="modal-header text-white" style="background-color: #AB47BC;">
                 <h5 class="modal-title">Agregar Documento</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -420,6 +508,8 @@
     private string busqueda = string.Empty;
     private string filtroTipo = string.Empty;
     private string filtroEstado = string.Empty;
+    private int paginaActual = 1;
+    private const int registrosPorPagina = 15;
 
     private List<Cliente> ClientesFiltrados => clientes
         .Where(c =>
@@ -433,14 +523,42 @@
         .OrderByDescending(c => c.FechaRegistro)
         .ToList();
 
-    protected override async Task OnInitializedAsync()
+    private List<Cliente> ClientesPaginados => ClientesFiltrados
+        .Skip((paginaActual - 1) * registrosPorPagina)
+        .Take(registrosPorPagina)
+        .ToList();
+
+    private int TotalPaginas => (int)Math.Ceiling(ClientesFiltrados.Count / (double)registrosPorPagina);
+
+    private bool hasLoaded = false;
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarClientes();
+        if (firstRender && !hasLoaded)
+        {
+            hasLoaded = true;
+            await CargarClientes();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfigurarContextoMultiTenant(BusOpsDbContext context)
+    {
+        var empresaIdResult = await SessionStorage.GetAsync<int?>("EmpresaId");
+        var rolResult = await SessionStorage.GetAsync<string>("userRole");
+        
+        if (empresaIdResult.Success && empresaIdResult.Value.HasValue)
+        {
+            context.CurrentEmpresaId = empresaIdResult.Value;
+        }
+        
+        context.IsSuperAdmin = rolResult.Success && rolResult.Value == Roles.SuperAdministrador;
     }
 
     private async Task CargarClientes()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         clientes = await context.Clientes.ToListAsync();
     }
 
@@ -454,6 +572,7 @@
     private async Task EditarCliente(Cliente cliente)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var clienteDb = await context.Clientes
             .Include(c => c.Documentos)
             .FirstOrDefaultAsync(c => c.Id == cliente.Id);
@@ -469,6 +588,7 @@
     private async Task GuardarCliente()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         
         if (clienteSeleccionado.Id == 0)
         {
@@ -490,6 +610,7 @@
     private async Task EliminarCliente(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var cliente = await context.Clientes.FindAsync(id);
         if (cliente != null)
         {
@@ -559,6 +680,7 @@
         nuevoDoc.ClienteId = clienteSeleccionado.Id;
         
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         context.Documentos.Add(nuevoDoc);
         await context.SaveChangesAsync();
         
@@ -576,6 +698,7 @@
         if (!confirmar) return;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var documento = await context.Documentos.FindAsync(documentoId);
         if (documento != null)
         {
@@ -588,5 +711,24 @@
             
             StateHasChanged();
         }
+    }
+
+    private void CambiarPagina(int numeroPagina)
+    {
+        if (numeroPagina >= 1 && numeroPagina <= TotalPaginas)
+        {
+            paginaActual = numeroPagina;
+        }
+    }
+
+    private void ResetearPagina()
+    {
+        paginaActual = 1;
+    }
+
+    private async Task EditarClienteDobleClick(Cliente cliente)
+    {
+        await EditarCliente(cliente);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('clienteModal')).show();");
     }
 }

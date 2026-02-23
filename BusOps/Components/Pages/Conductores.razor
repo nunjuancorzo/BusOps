@@ -1,8 +1,11 @@
 @page "/conductores"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using BusOps.Data
+@using BusOps.Models
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Conductores</PageTitle>
@@ -34,9 +37,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var conductor in conductores)
+                    @foreach (var conductor in ConductoresPaginados)
                     {
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarConductorDobleClick(conductor)" title="Doble click para editar">
                             <td><strong>@conductor.Nombre @conductor.Apellidos</strong></td>
                             <td>@conductor.DNI</td>
                             <td>@conductor.NumeroLicencia</td>
@@ -83,6 +86,34 @@
             @if (!conductores.Any())
             {
                 <p class="text-center text-muted py-4">No hay conductores registrados</p>
+            }
+
+            @if (TotalPaginas > 1)
+            {
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted">
+                        Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@(Math.Min(paginaActual * registrosPorPagina, conductores.Count)) de @conductores.Count resultados
+                    </div>
+                    <nav>
+                        <ul class="pagination mb-0">
+                            <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" style="cursor: pointer;">Anterior</a>
+                            </li>
+                            
+                            @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                            {
+                                var pagina = i;
+                                <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                    <a class="page-link" @onclick="() => CambiarPagina(pagina)" style="cursor: pointer;">@pagina</a>
+                                </li>
+                            }
+                            
+                            <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" style="cursor: pointer;">Siguiente</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
             }
         </div>
     </div>
@@ -563,6 +594,15 @@
     private List<Autobus> autobuses = new();
     private DateTime fechaVencimientoLicencia = DateTime.Now;
     private DateTime fechaContratacion = DateTime.Now;
+    private int paginaActual = 1;
+    private const int registrosPorPagina = 15;
+    
+    private List<Conductor> ConductoresPaginados => conductores
+        .Skip((paginaActual - 1) * registrosPorPagina)
+        .Take(registrosPorPagina)
+        .ToList();
+    
+    private int TotalPaginas => (int)Math.Ceiling(conductores.Count / (double)registrosPorPagina);
     
     // Variables para pestañas
     private string tabActiva = "datos";
@@ -594,14 +634,35 @@
     private DateTime? fechaVencimientoDoc;
     private IBrowserFile? archivoSeleccionado;
 
-    protected override async Task OnInitializedAsync()
+    private bool hasLoaded = false;
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarDatos();
+        if (firstRender && !hasLoaded)
+        {
+            hasLoaded = true;
+            await CargarDatos();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfigurarContextoMultiTenant(BusOpsDbContext context)
+    {
+        var empresaIdResult = await SessionStorage.GetAsync<int?>("EmpresaId");
+        var rolResult = await SessionStorage.GetAsync<string>("userRole");
+        
+        if (empresaIdResult.Success && empresaIdResult.Value.HasValue)
+        {
+            context.CurrentEmpresaId = empresaIdResult.Value;
+        }
+        
+        context.IsSuperAdmin = rolResult.Success && rolResult.Value == Roles.SuperAdministrador;
     }
 
     private async Task CargarDatos()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         conductores = await context.Conductores
             .Include(c => c.Autobus)
             .ToListAsync();
@@ -615,6 +676,7 @@
     private async Task CargarConductores()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         conductores = await context.Conductores
             .Include(c => c.Autobus)
             .ToListAsync();
@@ -669,6 +731,7 @@
     private async Task EditarConductor(Conductor conductor)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var conductorCompleto = await context.Conductores
             .Include(c => c.Documentos)
             .FirstOrDefaultAsync(c => c.Id == conductor.Id);
@@ -790,6 +853,7 @@
         conductorSeleccionado.HoraFinConductorOcasional = horaFin?.ToTimeSpan();
 
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         
         if (conductorSeleccionado.Id == 0)
         {
@@ -797,7 +861,53 @@
         }
         else
         {
-            context.Conductores.Update(conductorSeleccionado);
+            // Para evitar problemas de tracking, obtener el conductor del contexto y actualizar sus propiedades
+            var conductorExistente = await context.Conductores.FindAsync(conductorSeleccionado.Id);
+            if (conductorExistente != null)
+            {
+                // Copiar todas las propiedades del conductor seleccionado al existente
+                conductorExistente.Nombre = conductorSeleccionado.Nombre;
+                conductorExistente.Apellidos = conductorSeleccionado.Apellidos;
+                conductorExistente.DNI = conductorSeleccionado.DNI;
+                conductorExistente.NumeroLicencia = conductorSeleccionado.NumeroLicencia;
+                conductorExistente.FechaVencimientoLicencia = conductorSeleccionado.FechaVencimientoLicencia;
+                conductorExistente.Telefono = conductorSeleccionado.Telefono;
+                conductorExistente.Email = conductorSeleccionado.Email;
+                conductorExistente.FechaContratacion = conductorSeleccionado.FechaContratacion;
+                conductorExistente.Estado = conductorSeleccionado.Estado;
+                conductorExistente.AutobusId = conductorSeleccionado.AutobusId;
+                conductorExistente.NumeroSeguridadSocial = conductorSeleccionado.NumeroSeguridadSocial;
+                conductorExistente.CuentaBancaria = conductorSeleccionado.CuentaBancaria;
+                conductorExistente.Notas = conductorSeleccionado.Notas;
+                
+                // Fechas de caducidad
+                conductorExistente.AltaEmpresa = conductorSeleccionado.AltaEmpresa;
+                conductorExistente.BajaEmpresa = conductorSeleccionado.BajaEmpresa;
+                conductorExistente.RevisionMedica = conductorSeleccionado.RevisionMedica;
+                conductorExistente.CaducidadTacografo = conductorSeleccionado.CaducidadTacografo;
+                conductorExistente.CaducidadDNI = conductorSeleccionado.CaducidadDNI;
+                conductorExistente.Pasaporte = conductorSeleccionado.Pasaporte;
+                conductorExistente.DescargaTacografo = conductorSeleccionado.DescargaTacografo;
+                conductorExistente.FinalizacionContrato = conductorSeleccionado.FinalizacionContrato;
+                conductorExistente.PeriodoPruebas = conductorSeleccionado.PeriodoPruebas;
+                conductorExistente.CAP = conductorSeleccionado.CAP;
+                conductorExistente.CaducidadPenales = conductorSeleccionado.CaducidadPenales;
+                conductorExistente.CertificadoExtracomunitario = conductorSeleccionado.CertificadoExtracomunitario;
+                conductorExistente.TarjetaSanitaria = conductorSeleccionado.TarjetaSanitaria;
+                
+                // Características
+                conductorExistente.Conduce15Metros = conductorSeleccionado.Conduce15Metros;
+                conductorExistente.DisponibilidadCircuitoInternacional = conductorSeleccionado.DisponibilidadCircuitoInternacional;
+                conductorExistente.HablaIngles = conductorSeleccionado.HablaIngles;
+                conductorExistente.PuedeTrabajarFestivos = conductorSeleccionado.PuedeTrabajarFestivos;
+                
+                // Conductor ocasional
+                conductorExistente.EsConductorOcasional = conductorSeleccionado.EsConductorOcasional;
+                conductorExistente.FechaInicioConductorOcasional = conductorSeleccionado.FechaInicioConductorOcasional;
+                conductorExistente.FechaFinConductorOcasional = conductorSeleccionado.FechaFinConductorOcasional;
+                conductorExistente.HoraInicioConductorOcasional = conductorSeleccionado.HoraInicioConductorOcasional;
+                conductorExistente.HoraFinConductorOcasional = conductorSeleccionado.HoraFinConductorOcasional;
+            }
         }
         
         await context.SaveChangesAsync();
@@ -810,6 +920,7 @@
     private async Task EliminarConductor(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var conductor = await context.Conductores.FindAsync(id);
         if (conductor != null)
         {
@@ -874,6 +985,7 @@
             };
 
             using var context = await DbFactory.CreateDbContextAsync();
+            await ConfigurarContextoMultiTenant(context);
             context.Documentos.Add(documento);
             await context.SaveChangesAsync();
 
@@ -901,6 +1013,7 @@
     private async Task EliminarDocumento(int documentoId)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var documento = await context.Documentos.FindAsync(documentoId);
         
         if (documento != null)
@@ -935,5 +1048,19 @@
             EstadoConductor.Inactivo => "bg-danger",
             _ => "bg-secondary"
         };
+    }
+
+    private void CambiarPagina(int numeroPagina)
+    {
+        if (numeroPagina >= 1 && numeroPagina <= TotalPaginas)
+        {
+            paginaActual = numeroPagina;
+        }
+    }
+
+    private async Task EditarConductorDobleClick(Conductor conductor)
+    {
+        EditarConductor(conductor);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('conductorModal')).show();");
     }
 }

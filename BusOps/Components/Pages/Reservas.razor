@@ -1,8 +1,10 @@
 @page "/reservas"
 @using Microsoft.EntityFrameworkCore
 @using BusOps.Data
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Reservas</PageTitle>
@@ -17,7 +19,7 @@
 <div class="modal fade" id="reservaModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #2196F3;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #BA68C8;">
                 <h5 class="modal-title">@(reservaSeleccionada.Id > 0 ? "Editar Reserva" : "Nueva Reserva")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -136,7 +138,7 @@
                         var ruta = rutas.FirstOrDefault(r => r.Id == viaje?.RutaId);
                         var pasajero = pasajeros.FirstOrDefault(p => p.Id == reserva.PasajeroId);
                         
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarReservaDobleClick(reserva)" title="Doble click para editar">
                             <td><strong>@reserva.CodigoReserva</strong></td>
                             <td>
                                 @pasajero?.Nombre @pasajero?.Apellidos<br/>
@@ -232,21 +234,42 @@
     private List<Pasajero> pasajeros = new();
     private Reserva reservaSeleccionada = new();
     private EstadoReserva? filtroEstado = null;
+    
+    private bool IsSuperAdmin = false;
+    private int? CurrentEmpresaId = null;
+    private bool firstRender = true;
 
     private IEnumerable<Reserva> ReservasFiltradas =>
         filtroEstado == null ? reservas : reservas.Where(r => r.Estado == filtroEstado);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarReservas();
-        await CargarViajes();
-        await CargarRutas();
-        await CargarPasajeros();
+        if (firstRender)
+        {
+            this.firstRender = false;
+            
+            var empresaIdResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var userRoleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (userRoleResult.Success)
+            {
+                IsSuperAdmin = userRoleResult.Value == "SuperAdministrador";
+            }
+            
+            await CargarReservas();
+            await CargarViajes();
+            await CargarRutas();
+            await CargarPasajeros();
+            StateHasChanged();
+        }
     }
 
     private async Task CargarReservas()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         reservas = await context.Reservas
             .Include(r => r.Viaje)
             .Include(r => r.Pasajero)
@@ -256,6 +279,8 @@
     private async Task CargarViajes()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         viajes = await context.Viajes
             .Include(v => v.Ruta)
             .ToListAsync();
@@ -264,12 +289,16 @@
     private async Task CargarRutas()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         rutas = await context.Rutas.ToListAsync();
     }
 
     private async Task CargarPasajeros()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         pasajeros = await context.Pasajeros.ToListAsync();
     }
 
@@ -314,11 +343,17 @@
     private async Task GuardarReserva()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         if (reservaSeleccionada.Id == 0)
         {
             reservaSeleccionada.CodigoReserva = $"RES-{DateTime.Now.Year}-{(await context.Reservas.CountAsync() + 1):D3}";
             reservaSeleccionada.FechaReserva = DateTime.Now;
+            if (CurrentEmpresaId.HasValue)
+            {
+                reservaSeleccionada.EmpresaId = CurrentEmpresaId.Value;
+            }
             context.Reservas.Add(reservaSeleccionada);
             
             // Actualizar asientos disponibles
@@ -331,7 +366,17 @@
         }
         else
         {
-            context.Reservas.Update(reservaSeleccionada);
+            // Para evitar problemas de tracking, obtener la reserva del contexto y actualizar sus propiedades
+            var reservaExistente = await context.Reservas.FindAsync(reservaSeleccionada.Id);
+            if (reservaExistente != null)
+            {
+                reservaExistente.NumeroAsiento = reservaSeleccionada.NumeroAsiento;
+                reservaExistente.PrecioPagado = reservaSeleccionada.PrecioPagado;
+                reservaExistente.Estado = reservaSeleccionada.Estado;
+                reservaExistente.TipoPago = reservaSeleccionada.TipoPago;
+                reservaExistente.ViajeId = reservaSeleccionada.ViajeId;
+                reservaExistente.PasajeroId = reservaSeleccionada.PasajeroId;
+            }
         }
 
         await context.SaveChangesAsync();
@@ -347,6 +392,8 @@
     private async Task CancelarReserva(Reserva reserva)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         reserva.Estado = EstadoReserva.Cancelada;
         context.Reservas.Update(reserva);
@@ -368,6 +415,8 @@
     private async Task ReactivarReserva(Reserva reserva)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         reserva.Estado = EstadoReserva.Pendiente;
         context.Reservas.Update(reserva);
@@ -393,5 +442,14 @@
             EstadoReserva.Utilizada => "bg-secondary",
             _ => "bg-secondary"
         };
+    }
+
+    private async Task EditarReservaDobleClick(Reserva reserva)
+    {
+        if (reserva.Estado != EstadoReserva.Cancelada && reserva.Estado != EstadoReserva.Utilizada)
+        {
+            EditarReserva(reserva);
+            await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('reservaModal')).show()");
+        }
     }
 }

@@ -2,8 +2,10 @@
 @using Microsoft.EntityFrameworkCore
 @using BusOps.Data
 @using BusOps.Models
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Proveedores</PageTitle>
@@ -33,9 +35,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var proveedor in proveedores)
+                    @foreach (var proveedor in ProveedoresPaginados)
                     {
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarProveedorDobleClick(proveedor)" title="Doble click para editar">
                             <td><strong>@proveedor.Nombre</strong></td>
                             <td>@proveedor.NIF</td>
                             <td>@proveedor.Contacto</td>
@@ -75,6 +77,34 @@
             @if (!proveedores.Any())
             {
                 <p class="text-center text-muted py-4">No hay proveedores registrados</p>
+            }
+
+            @if (TotalPaginas > 1)
+            {
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted">
+                        Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@(Math.Min(paginaActual * registrosPorPagina, proveedores.Count)) de @proveedores.Count resultados
+                    </div>
+                    <nav>
+                        <ul class="pagination mb-0">
+                            <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" style="cursor: pointer;">Anterior</a>
+                            </li>
+                            
+                            @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                            {
+                                var pagina = i;
+                                <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                    <a class="page-link" @onclick="() => CambiarPagina(pagina)" style="cursor: pointer;">@pagina</a>
+                                </li>
+                            }
+                            
+                            <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" style="cursor: pointer;">Siguiente</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
             }
         </div>
     </div>
@@ -311,15 +341,45 @@
     private DateTime? fechaVencimientoDoc;
     private IBrowserFile? archivoSeleccionado;
     private string tabActiva = "datos";
+    private int paginaActual = 1;
+    private const int registrosPorPagina = 15;
+    
+    private List<Proveedor> ProveedoresPaginados => proveedores
+        .Skip((paginaActual - 1) * registrosPorPagina)
+        .Take(registrosPorPagina)
+        .ToList();
+    
+    private int TotalPaginas => (int)Math.Ceiling(proveedores.Count / (double)registrosPorPagina);
+    
+    private bool IsSuperAdmin = false;
+    private int? CurrentEmpresaId = null;
+    private bool firstRender = true;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarProveedores();
+        if (firstRender)
+        {
+            this.firstRender = false;
+            
+            var empresaIdResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var userRoleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (userRoleResult.Success)
+            {
+                IsSuperAdmin = userRoleResult.Value == "SuperAdministrador";
+            }
+            
+            await CargarProveedores();
+            StateHasChanged();
+        }
     }
 
     private async Task CargarProveedores()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         proveedores = await context.Proveedores.ToListAsync();
     }
 
@@ -333,6 +393,8 @@
     private async Task EditarProveedor(Proveedor proveedor)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var proveedorDb = await context.Proveedores
             .Include(p => p.Documentos)
             .FirstOrDefaultAsync(p => p.Id == proveedor.Id);
@@ -348,10 +410,16 @@
     private async Task GuardarProveedor()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         if (proveedorSeleccionado.Id == 0)
         {
             proveedorSeleccionado.FechaRegistro = DateTime.Now;
+            if (CurrentEmpresaId.HasValue)
+            {
+                proveedorSeleccionado.EmpresaId = CurrentEmpresaId.Value;
+            }
             context.Proveedores.Add(proveedorSeleccionado);
         }
         else
@@ -369,6 +437,8 @@
     private async Task EliminarProveedor(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var proveedor = await context.Proveedores.FindAsync(id);
         if (proveedor != null)
         {
@@ -427,6 +497,8 @@
         nuevoDoc.ProveedorId = proveedorSeleccionado.Id;
         
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         context.Documentos.Add(nuevoDoc);
         await context.SaveChangesAsync();
         
@@ -444,6 +516,8 @@
         if (!confirmar) return;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var documento = await context.Documentos.FindAsync(documentoId);
         if (documento != null)
         {
@@ -456,5 +530,19 @@
             
             StateHasChanged();
         }
+    }
+
+    private void CambiarPagina(int numeroPagina)
+    {
+        if (numeroPagina >= 1 && numeroPagina <= TotalPaginas)
+        {
+            paginaActual = numeroPagina;
+        }
+    }
+
+    private async Task EditarProveedorDobleClick(Proveedor proveedor)
+    {
+        EditarProveedor(proveedor);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('proveedorModal')).show();");
     }
 }

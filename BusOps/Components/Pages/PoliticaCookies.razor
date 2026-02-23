@@ -1,0 +1,164 @@
+@page "/politica-cookies"
+@using BusOps.Data
+@using BusOps.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+
+<PageTitle>Política de Cookies - BusOps</PageTitle>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="d-flex align-items-center mb-4">
+                <i class="bi bi-cookie fs-1 text-purple me-3"></i>
+                <h1 class="mb-0">Política de Cookies</h1>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    
+                    <h3 class="text-purple mb-3">1. ¿Qué son las cookies?</h3>
+                    <p class="mb-4">
+                        Una cookie es un pequeño archivo que se almacena en el ordenador del usuario y nos permite reconocerle. 
+                        El conjunto de cookies nos ayuda a mejorar la calidad de nuestra aplicación, permitiéndonos controlar 
+                        qué páginas encuentran nuestros usuarios útiles y cuáles no.
+                    </p>
+                    <p class="mb-4">
+                        Las cookies son esenciales para el funcionamiento de internet, aportando innumerables ventajas en la 
+                        prestación de servicios interactivos, facilitándole la navegación y usabilidad de nuestra aplicación.
+                    </p>
+
+                    <h3 class="text-purple mb-3">2. Tipos de cookies que utilizamos</h3>
+                    
+                    <h5 class="text-purple mb-2">Cookies Técnicas (Necesarias)</h5>
+                    <p class="mb-3">
+                        Son aquellas imprescindibles para el correcto funcionamiento de la aplicación. Permiten utilizar 
+                        las diferentes opciones o servicios que existen en ella como, por ejemplo, identificar la sesión, 
+                        recordar los elementos que integran un pedido, gestionar el proceso de autenticación, etc.
+                    </p>
+                    <ul class="mb-4">
+                        <li><strong>Cookies de sesión:</strong> Almacenan información sobre la sesión del usuario autenticado</li>
+                        <li><strong>Cookies de autenticación:</strong> Mantienen la sesión activa del usuario en la aplicación</li>
+                        <li><strong>Cookies de preferencias:</strong> Guardan la configuración y preferencias del usuario</li>
+                    </ul>
+
+                    <h5 class="text-purple mb-2">Cookies de Personalización</h5>
+                    <p class="mb-4">
+                        Son aquellas que permiten al usuario acceder al servicio con algunas características de carácter 
+                        general predefinidas en función de una serie de criterios en el terminal del usuario, como por 
+                        ejemplo el idioma, el tipo de navegador a través del cual accede al servicio, la configuración 
+                        regional desde donde accede al servicio, etc.
+                    </p>
+
+                    <h3 class="text-purple mb-3">3. Cookies utilizadas en esta aplicación</h3>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Duración</th>
+                                    <th>Finalidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>.AspNetCore.Antiforgery</td>
+                                    <td>Técnica</td>
+                                    <td>Sesión</td>
+                                    <td>Protección contra ataques CSRF</td>
+                                </tr>
+                                <tr>
+                                    <td>.AspNetCore.Session</td>
+                                    <td>Técnica</td>
+                                    <td>Sesión</td>
+                                    <td>Mantener la sesión del usuario</td>
+                                </tr>
+                                <tr>
+                                    <td>UsuarioId</td>
+                                    <td>Autenticación</td>
+                                    <td>Persistente</td>
+                                    <td>Identificación del usuario autenticado</td>
+                                </tr>
+                                <tr>
+                                    <td>EmpresaId</td>
+                                    <td>Personalización</td>
+                                    <td>Persistente</td>
+                                    <td>Identificación de la empresa asociada</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3 class="text-purple mb-3">4. Cómo gestionar las cookies en el navegador</h3>
+                    <p class="mb-3">
+                        Puede permitir, bloquear o eliminar las cookies instaladas en su equipo mediante la configuración 
+                        de las opciones del navegador instalado en su ordenador.
+                    </p>
+                    <p class="mb-3">
+                        A continuación le facilitamos los enlaces de los principales navegadores donde puede consultar 
+                        esta información:
+                    </p>
+                    <ul class="mb-4">
+                        <li><strong>Chrome:</strong> <a href="https://support.google.com/chrome/answer/95647" target="_blank">Configuración de cookies en Chrome</a></li>
+                        <li><strong>Firefox:</strong> <a href="https://support.mozilla.org/es/kb/habilitar-y-deshabilitar-cookies-sitios-web-rastrear-preferencias" target="_blank">Configuración de cookies en Firefox</a></li>
+                        <li><strong>Safari:</strong> <a href="https://support.apple.com/es-es/guide/safari/sfri11471/mac" target="_blank">Configuración de cookies en Safari</a></li>
+                        <li><strong>Edge:</strong> <a href="https://support.microsoft.com/es-es/microsoft-edge/eliminar-las-cookies-en-microsoft-edge-63947406-40ac-c3b8-57b9-2a946a29ae09" target="_blank">Configuración de cookies en Edge</a></li>
+                    </ul>
+
+                    <div class="alert alert-warning mb-4">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Importante:</strong> La desactivación de las cookies técnicas puede impedir el correcto 
+                        funcionamiento de la aplicación y algunas funcionalidades podrían no estar disponibles.
+                    </div>
+
+                    <h3 class="text-purple mb-3">5. Actualización de la Política de Cookies</h3>
+                    <p class="mb-4">
+                        Esta Política de Cookies puede ser modificada en función de exigencias legislativas, reglamentarias, 
+                        o con la finalidad de adaptar dicha política a las instrucciones dictadas por la Agencia Española 
+                        de Protección de Datos, por ello se aconseja a los usuarios que la visiten periódicamente.
+                    </p>
+
+                    <h3 class="text-purple mb-3">6. Más información</h3>
+                    <p class="mb-4">
+                        Para cualquier consulta sobre el uso de cookies en esta aplicación, puede ponerse en contacto con 
+                        nosotros a través del correo electrónico: <strong>@(configuracionEmpresa?.Email ?? "contacto@empresa.com")</strong>
+                    </p>
+
+                    <div class="alert alert-info mt-4">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Última actualización:</strong> Febrero 2026
+                    </div>
+
+                    <div class="text-center mt-4">
+                        <a href="/" class="btn btn-purple">
+                            <i class="bi bi-arrow-left me-2"></i>Volver al Inicio
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private ConfiguracionEmpresa? configuracionEmpresa;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfiguracion();
+    }
+
+    private async Task CargarConfiguracion()
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            configuracionEmpresa = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar configuración: {ex.Message}");
+        }
+    }
+}

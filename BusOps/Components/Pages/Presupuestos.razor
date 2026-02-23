@@ -5,9 +5,11 @@
 @using BusOps.Services
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
 @inject NavigationManager NavigationManager
+@inject ProtectedSessionStorage SessionStorage
 @inject EmailService EmailService
 @inject PresupuestoPdfService PresupuestoPdfService
 @rendermode InteractiveServer
@@ -25,10 +27,10 @@
     <div class="card-body">
         <div class="row">
             <div class="col-md-3">
-                <input type="text" class="form-control" placeholder="Buscar por número o cliente..." @bind="busqueda" @bind:event="oninput" />
+                <input type="text" class="form-control" placeholder="Buscar por número o cliente..." @bind="busqueda" @bind:event="oninput" @bind:after="ResetearPagina" />
             </div>
             <div class="col-md-3">
-                <select class="form-select" @bind="filtroEstado">
+                <select class="form-select" @bind="filtroEstado" @bind:after="ResetearPagina">
                     <option value="">Todos los estados</option>
                     <option value="Borrador">Borrador</option>
                     <option value="Enviado">Enviado</option>
@@ -39,10 +41,10 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <input type="date" class="form-control" @bind="filtroFechaDesde" />
+                <input type="date" class="form-control" @bind="filtroFechaDesde" @bind:after="ResetearPagina" />
             </div>
             <div class="col-md-3">
-                <input type="date" class="form-control" @bind="filtroFechaHasta" />
+                <input type="date" class="form-control" @bind="filtroFechaHasta" @bind:after="ResetearPagina" />
             </div>
         </div>
     </div>
@@ -52,7 +54,7 @@
 <div class="modal fade" id="presupuestoModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #4CAF50;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #AB47BC;">
                 <h5 class="modal-title">@(presupuestoSeleccionado.Id == 0 ? "Nuevo Presupuesto" : "Editar Presupuesto")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -276,9 +278,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var presupuesto in PresupuestosFiltrados)
+                    @foreach (var presupuesto in PresupuestosPaginados)
                     {
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarPresupuestoDobleClick(presupuesto)" title="Doble click para editar">
                             <td><strong>@presupuesto.NumeroPresupuesto</strong></td>
                             <td>
                                 @{
@@ -330,6 +332,34 @@
                     }
                 </tbody>
             </table>
+
+            @if (TotalPaginas > 1)
+            {
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted">
+                        Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@(Math.Min(paginaActual * registrosPorPagina, PresupuestosFiltrados.Count)) de @PresupuestosFiltrados.Count resultados
+                    </div>
+                    <nav>
+                        <ul class="pagination mb-0">
+                            <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" style="cursor: pointer;">Anterior</a>
+                            </li>
+                            
+                            @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                            {
+                                var pagina = i;
+                                <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                    <a class="page-link" @onclick="() => CambiarPagina(pagina)" style="cursor: pointer;">@pagina</a>
+                                </li>
+                            }
+                            
+                            <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" style="cursor: pointer;">Siguiente</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            }
         </div>
     </div>
 </div>
@@ -428,6 +458,12 @@
     private ConfiguracionEmpresa? configuracionEmpresa;
     private string logoEmpresa = string.Empty;
     private string vistaAnalisis = "tarjetas";
+    private int paginaActual = 1;
+    private const int registrosPorPagina = 15;
+    
+    private bool IsSuperAdmin = false;
+    private int? CurrentEmpresaId = null;
+    private bool firstRender = true;
 
     private List<Presupuesto> PresupuestosFiltrados => presupuestos
         .Where(p =>
@@ -439,15 +475,43 @@
         .OrderByDescending(p => p.FechaEmision)
         .ToList();
 
-    protected override async Task OnInitializedAsync()
+    private List<Presupuesto> PresupuestosPaginados => PresupuestosFiltrados
+        .Skip((paginaActual - 1) * registrosPorPagina)
+        .Take(registrosPorPagina)
+        .ToList();
+
+    private int TotalPaginas => (int)Math.Ceiling(PresupuestosFiltrados.Count / (double)registrosPorPagina);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarConfiguracion();
-        await CargarDatos();
+        if (firstRender)
+        {
+            this.firstRender = false;
+            
+            var empresaIdResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var userRoleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (userRoleResult.Success)
+            {
+                IsSuperAdmin = userRoleResult.Value == "SuperAdministrador";
+            }
+            
+            await CargarConfiguracion();
+            await CargarDatos();
+            StateHasChanged();
+        }
+        else if (vistaAnalisis == "graficos")
+        {
+            await GenerarGraficos();
+        }
     }
 
     private async Task CargarConfiguracion()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         configuracionEmpresa = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
         if (configuracionEmpresa != null && !string.IsNullOrEmpty(configuracionEmpresa.LogoRuta))
         {
@@ -458,6 +522,8 @@
     private async Task CargarDatos()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         clientes = await context.Clientes.ToListAsync();
         presupuestos = await context.Presupuestos.Include(p => p.Cliente).ToListAsync();
     }
@@ -465,6 +531,8 @@
     private async Task MostrarFormularioNuevo()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         // Obtener la configuración para la serie de presupuesto
         var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
@@ -965,14 +1033,6 @@
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender && vistaAnalisis == "graficos")
-        {
-            await GenerarGraficos();
-        }
-    }
-
     private async Task GenerarGraficos()
     {
         // Datos para gráfico de estados
@@ -1080,5 +1140,24 @@
         await JSRuntime.InvokeVoidAsync("eval", scriptEstados);
         await Task.Delay(100);
         await JSRuntime.InvokeVoidAsync("eval", scriptMensual);
+    }
+
+    private void CambiarPagina(int numeroPagina)
+    {
+        if (numeroPagina >= 1 && numeroPagina <= TotalPaginas)
+        {
+            paginaActual = numeroPagina;
+        }
+    }
+
+    private void ResetearPagina()
+    {
+        paginaActual = 1;
+    }
+
+    private async Task EditarPresupuestoDobleClick(Presupuesto presupuesto)
+    {
+        await EditarPresupuesto(presupuesto);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('presupuestoModal')).show();");
     }
 }

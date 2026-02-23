@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using Microsoft.EntityFrameworkCore
 @using BusOps.Data
+@using BusOps.Models
 @using BusOps.Helpers
 @implements IDisposable
 @inject ProtectedSessionStorage SessionStorage
@@ -15,6 +16,7 @@
 @code {
     private bool isChecking = true;
     private bool datosInicializados = false;
+    private bool isClientSide = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -25,6 +27,7 @@
     {
         if (firstRender)
         {
+            isClientSide = true; // Ahora estamos en el cliente
             var result = await SessionStorage.GetAsync<bool>("isAuthenticated");
             if (!result.Success || !result.Value)
             {
@@ -35,26 +38,40 @@
                 await CargarDatosDesdeBaseDatos();
                 isChecking = false;
                 datosInicializados = true;
+                
+                // Forzar renderizado del DOM antes de inicializar el mapa
                 StateHasChanged();
+                await Task.Delay(100);
+                StateHasChanged();
+                
+                // Inicializar mapa después de cargar datos con delay para asegurar renderizado
+                if (proximosViajes.Any())
+                {
+                    await Task.Delay(800); // Delay más largo para garantizar que el DOM está completamente renderizado
+                    await InicializarMapa();
+                }
             }
-        }
-        else if (datosInicializados && proximosViajes.Any())
-        {
-            // Inicializar mapa después del segundo render cuando los datos ya están cargados
-            await InicializarMapa();
         }
     }
 
     private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        if (datosInicializados && (e.Location.EndsWith("/") || e.Location.Contains("/#") || e.Location.Contains("localhost")))
+        Console.WriteLine($"🔄 OnLocationChanged disparado - URL: {e.Location}");
+        Console.WriteLine($"   isClientSide: {isClientSide}, datosInicializados: {datosInicializados}");
+        Console.WriteLine($"   Condición URL: {(e.Location.EndsWith("/") || e.Location.Contains("/#") || e.Location.Contains("localhost"))}");
+        
+        if (isClientSide && datosInicializados && (e.Location.EndsWith("/") || e.Location.Contains("/#") || e.Location.Contains("localhost")))
         {
-            Console.WriteLine($"OnLocationChanged: Recargando datos y mapa. URL: {e.Location}");
+            Console.WriteLine($"✅ OnLocationChanged: Recargando datos y mapa. URL: {e.Location}");
             await CargarDatosDesdeBaseDatos();
             await InvokeAsync(StateHasChanged);
-            // Pequeño delay para asegurar que el DOM está listo
-            await Task.Delay(100);
+            // Delay más largo para asegurar que el DOM está listo después del StateHasChanged
+            await Task.Delay(500);
             await InicializarMapa();
+        }
+        else
+        {
+            Console.WriteLine($"❌ OnLocationChanged: NO se recargaron datos. Condiciones no cumplidas.");
         }
     }
 
@@ -463,6 +480,28 @@
     {
         using var context = await DbFactory.CreateDbContextAsync();
         
+        // Configurar contexto multi-tenant
+        var empresaIdResult = await SessionStorage.GetAsync<int?>("EmpresaId");
+        var rolResult = await SessionStorage.GetAsync<string>("userRole");
+        
+        Console.WriteLine($"=========================================");
+        Console.WriteLine($"HOME - EmpresaId en sesión: {(empresaIdResult.Success && empresaIdResult.Value.HasValue ? empresaIdResult.Value.ToString() : "NULL")}");
+        Console.WriteLine($"HOME - Rol: {(rolResult.Success ? rolResult.Value : "NULL")}");
+        
+        if (empresaIdResult.Success && empresaIdResult.Value.HasValue)
+        {
+            context.CurrentEmpresaId = empresaIdResult.Value;
+            Console.WriteLine($"HOME - CurrentEmpresaId configurado: {context.CurrentEmpresaId}");
+        }
+        else
+        {
+            Console.WriteLine($"HOME - CurrentEmpresaId NO configurado (NULL)");
+        }
+        
+        context.IsSuperAdmin = rolResult.Success && rolResult.Value == Roles.SuperAdministrador;
+        Console.WriteLine($"HOME - IsSuperAdmin: {context.IsSuperAdmin}");
+        Console.WriteLine($"=========================================");
+        
         // Cargar datos reales desde la base de datos con relaciones incluidas
         autobuses = await context.Autobuses.ToListAsync();
         conductores = await context.Conductores.ToListAsync();
@@ -476,8 +515,28 @@
         reservas = await context.Reservas.ToListAsync();
         facturas = await context.Facturas.ToListAsync();
         gastos = await context.Gastos.ToListAsync();
-        mantenimientos = await context.MantenimientosAutobus.ToListAsync();
-        presupuestos = await context.Presupuestos.ToListAsync();
+        
+        try
+        {
+            mantenimientos = await context.MantenimientosAutobus.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($" ERROR al cargar mantenimientos: {ex.Message}");
+            Console.WriteLine($"❌  Stack trace: {ex.StackTrace}");
+            mantenimientos = new List<MantenimientoAutobus>();
+        }
+        
+        try
+        {
+            presupuestos = await context.Presupuestos.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ ERROR al cargar presupuestos: {ex.Message}");
+            Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
+            presupuestos = new List<Presupuesto>();
+        }
         
         // Debug: log de datos cargados
         Console.WriteLine($"Dashboard - Autobuses cargados: {autobuses.Count}");
@@ -490,21 +549,58 @@
     
     private async Task InicializarMapa()
     {
+        if (!isClientSide)
+        {
+            Console.WriteLine("❌ No se puede inicializar mapa: aún no estamos en el cliente");
+            return;
+        }
+        
         try
         {
-            // Verificar si el contenedor del mapa existe antes de intentar inicializarlo
-            var contenedorExiste = await JSRuntime.InvokeAsync<bool>("verificarContenedorMapa");
-            if (!contenedorExiste)
+            Console.WriteLine("🗺️ Iniciando proceso de inicialización del mapa...");
+            
+            // Delay inicial para dar tiempo al DOM
+            await Task.Delay(300);
+            
+            // Verificar si el contenedor del mapa existe con múltiples reintentos
+            var contenedorExiste = false;
+            var intentos = 0;
+            var maxIntentos = 10; // Aumentado de 5 a 10
+            
+            while (!contenedorExiste && intentos < maxIntentos)
             {
-                Console.WriteLine("Contenedor del mapa no encontrado, reintentando en 200ms...");
-                await Task.Delay(200);
                 contenedorExiste = await JSRuntime.InvokeAsync<bool>("verificarContenedorMapa");
                 if (!contenedorExiste)
                 {
-                    Console.WriteLine("Contenedor del mapa aún no disponible.");
-                    return;
+                    intentos++;
+                    Console.WriteLine($"🔍 Contenedor del mapa no encontrado, intento {intentos}/{maxIntentos}...");
+                    await Task.Delay(500); // Aumentado de 300ms a 500ms
+                }
+                else
+                {
+                    Console.WriteLine($"✅ Contenedor encontrado en intento {intentos + 1}");
                 }
             }
+            
+            if (!contenedorExiste)
+            {
+                Console.WriteLine("❌ Contenedor del mapa no disponible después de múltiples intentos.");
+                Console.WriteLine("🔄 Intentando forzar renderizado adicional...");
+                
+                // Último intento: forzar StateHasChanged y esperar más
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(1000);
+                
+                contenedorExiste = await JSRuntime.InvokeAsync<bool>("verificarContenedorMapa");
+                if (!contenedorExiste)
+                {
+                    Console.WriteLine("❌ Imposible inicializar el mapa. El contenedor no existe.");
+                    return;
+                }
+                Console.WriteLine("✅ Contenedor encontrado después de forzar renderizado");
+            }
+            
+            Console.WriteLine("🌍 Inicializando mapa con datos de viajes...");
 
             var viajesParaMapa = proximosViajes.Take(5).Select(v => new
             {
@@ -533,10 +629,11 @@
             }).ToList();
 
             await JSRuntime.InvokeVoidAsync("inicializarMapaRutas", viajesParaMapa);
+            Console.WriteLine("✅ Mapa inicializado correctamente con " + viajesParaMapa.Count + " viajes");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error al inicializar mapa: {ex.Message}");
+            Console.WriteLine($"❌ Error al inicializar mapa: {ex.Message}");
         }
     }
     
@@ -562,7 +659,8 @@
 }
 
 <script>
-    let mapaRutas = null;
+    // Usar window.mapaRutas para evitar errores de redeclaración en hot reload
+    window.mapaRutas = window.mapaRutas || null;
 
     // Función para verificar si el contenedor del mapa existe
     window.verificarContenedorMapa = function () {
@@ -596,10 +694,10 @@
 
     window.inicializarMapaRutas = function (viajes) {
         // Destruir mapa existente si lo hay
-        if (mapaRutas) {
+        if (window.mapaRutas) {
             try {
-                mapaRutas.remove();
-                mapaRutas = null;
+                window.mapaRutas.remove();
+                window.mapaRutas = null;
             } catch (e) {
                 console.log("Error al destruir mapa anterior:", e);
             }
@@ -613,13 +711,13 @@
         }
 
         // Crear nuevo mapa centrado en España
-        mapaRutas = L.map('map').setView([40.4168, -3.7038], 6);
+        window.mapaRutas = L.map('map').setView([40.4168, -3.7038], 6);
 
         // Añadir capa de mapa
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 18
-        }).addTo(mapaRutas);
+        }).addTo(window.mapaRutas);
 
         if (!viajes || viajes.length === 0) {
             return;
@@ -650,7 +748,7 @@
                     color: viaje.color,
                     weight: 4,
                     opacity: 0.7
-                }).addTo(mapaRutas);
+                }).addTo(window.mapaRutas);
 
                 // Marcador origen
                 L.circleMarker(coordsOrigen, {
@@ -660,7 +758,7 @@
                     weight: 2,
                     opacity: 1,
                     fillOpacity: 0.9
-                }).addTo(mapaRutas)
+                }).addTo(window.mapaRutas)
                     .bindPopup(`<b>Origen:</b> ${viaje.origen}`);
 
                 // Marcadores de paradas
@@ -674,7 +772,7 @@
                                 weight: 2,
                                 opacity: 1,
                                 fillOpacity: 0.8
-                            }).addTo(mapaRutas)
+                            }).addTo(window.mapaRutas)
                                 .bindPopup(`<div>
                                     <b>Parada ${parada.orden}:</b> ${parada.nombre}<br>
                                     <small>${parada.ciudad}</small><br>
@@ -692,7 +790,7 @@
                     weight: 2,
                     opacity: 1,
                     fillOpacity: 0.9
-                }).addTo(mapaRutas)
+                }).addTo(window.mapaRutas)
                     .bindPopup(`<b>Destino:</b> ${viaje.destino}`);
 
                 // Popup en el centro de la ruta
@@ -706,13 +804,13 @@
                         iconSize: [90, 20],
                         iconAnchor: [45, 10]
                     })
-                }).addTo(mapaRutas);
+                }).addTo(window.mapaRutas);
             }
         });
 
         // Ajustar vista para mostrar todas las rutas
         setTimeout(() => {
-            mapaRutas.invalidateSize();
+            window.mapaRutas.invalidateSize();
         }, 100);
     };
 

@@ -3,9 +3,11 @@
 @using BusOps.Data
 @using BusOps.Helpers
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
 @inject NavigationManager NavigationManager
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Mantenimiento</PageTitle>
@@ -20,7 +22,7 @@
 <div class="modal fade" id="mantenimientoModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #FF9800;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #8E24AA;">
                 <h5 class="modal-title">@(mantenimientoSeleccionado.Id > 0 ? "Editar Mantenimiento" : "Nuevo Mantenimiento")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -194,7 +196,7 @@
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header text-white" style="background-color: #8E24AA;">
                     <h5 class="modal-title">Detalles del Mantenimiento</h5>
                     <button type="button" class="btn-close" @onclick="CerrarDetalles"></button>
                 </div>
@@ -282,6 +284,10 @@
     private DateTime fechaInicio = DateTime.Now;
     private DateTime? fechaFin;
     private EstadoMantenimiento? filtroEstado = null;
+    
+    private bool IsSuperAdmin = false;
+    private int? CurrentEmpresaId = null;
+    private bool firstRender = true;
 
     [SupplyParameterFromQuery]
     public int? AutobusId { get; set; }
@@ -309,6 +315,23 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            this.firstRender = false;
+            
+            var empresaIdResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var userRoleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (userRoleResult.Success)
+            {
+                IsSuperAdmin = userRoleResult.Value == "SuperAdministrador";
+            }
+            
+            await CargarDatos();
+            StateHasChanged();
+        }
+        
         if (debeAbrirModal)
         {
             debeAbrirModal = false;
@@ -319,6 +342,8 @@
     private async Task CargarDatos()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         autobuses = await context.Autobuses.ToListAsync();
         mantenimientos = await context.MantenimientosAutobus.ToListAsync();
     }
@@ -366,14 +391,33 @@
         mantenimientoSeleccionado.FechaFin = fechaFin;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         if (mantenimientoSeleccionado.Id == 0)
         {
+            if (CurrentEmpresaId.HasValue)
+            {
+                mantenimientoSeleccionado.EmpresaId = CurrentEmpresaId.Value;
+            }
             context.MantenimientosAutobus.Add(mantenimientoSeleccionado);
         }
         else
         {
-            context.MantenimientosAutobus.Update(mantenimientoSeleccionado);
+            // Para evitar problemas de tracking, obtener el mantenimiento del contexto y actualizar sus propiedades
+            var mantenimientoExistente = await context.MantenimientosAutobus.FindAsync(mantenimientoSeleccionado.Id);
+            if (mantenimientoExistente != null)
+            {
+                mantenimientoExistente.FechaInicio = mantenimientoSeleccionado.FechaInicio;
+                mantenimientoExistente.FechaFin = mantenimientoSeleccionado.FechaFin;
+                mantenimientoExistente.Tipo = mantenimientoSeleccionado.Tipo;
+                mantenimientoExistente.Descripcion = mantenimientoSeleccionado.Descripcion;
+                mantenimientoExistente.Costo = mantenimientoSeleccionado.Costo;
+                mantenimientoExistente.Taller = mantenimientoSeleccionado.Taller;
+                mantenimientoExistente.KilometrajeMantenimiento = mantenimientoSeleccionado.KilometrajeMantenimiento;
+                mantenimientoExistente.Estado = mantenimientoSeleccionado.Estado;
+                mantenimientoExistente.AutobusId = mantenimientoSeleccionado.AutobusId;
+            }
         }
         
         // Cambiar el estado del autobús a EnMantenimiento
@@ -392,11 +436,14 @@
 
         await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('mantenimientoModal')).hide()");
         mantenimientoSeleccionado = null;
+        StateHasChanged();
     }
 
     private async Task EliminarMantenimiento(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var mantenimiento = await context.MantenimientosAutobus.FindAsync(id);
         if (mantenimiento != null)
         {

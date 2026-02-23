@@ -1,8 +1,10 @@
 @page "/rutas"
 @using Microsoft.EntityFrameworkCore
 @using BusOps.Data
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Rutas</PageTitle>
@@ -35,7 +37,7 @@
                 <tbody>
                     @foreach (var ruta in rutas)
                     {
-                        <tr class="@(!ruta.Activa ? "table-secondary" : "")">
+                        <tr class="@(!ruta.Activa ? "table-secondary" : "")" style="cursor: pointer;" @ondblclick="() => EditarRutaDobleClick(ruta)" title="Doble click para editar">
                             <td><strong>@ruta.Nombre</strong></td>
                             <td>@ruta.Origen</td>
                             <td>@ruta.Destino</td>
@@ -79,7 +81,7 @@
 <div class="modal fade" id="paradasInfoModal" tabindex="-1" aria-labelledby="paradasInfoModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header text-white" style="background-color: #9C27B0;">
                 <h5 class="modal-title" id="paradasInfoModalLabel">Paradas de la ruta: @(rutaSeleccionada?.Nombre ?? "")</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -139,7 +141,7 @@
 <div class="modal fade" id="rutaModal" tabindex="-1" aria-labelledby="rutaModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header text-white" style="background-color: #FF9800;">
+            <div class="modal-header text-white" style="background-color: #9C27B0;">
                 <h5 class="modal-title" id="rutaModalLabel">@(rutaSeleccionada2.Id == 0 ? "Nueva Ruta" : "Editar Ruta")</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -242,22 +244,45 @@
     private double duracionHoras = 0;
     private double tiempoDesdeInicioHoras = 0;
     private Ruta? rutaSeleccionada;
+    
+    private bool IsSuperAdmin = false;
+    private int? CurrentEmpresaId = null;
+    private bool firstRender = true;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarRutas();
-        await CargarParadas();
+        if (firstRender)
+        {
+            this.firstRender = false;
+            
+            var empresaIdResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var userRoleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (userRoleResult.Success)
+            {
+                IsSuperAdmin = userRoleResult.Value == "SuperAdministrador";
+            }
+            
+            await CargarRutas();
+            await CargarParadas();
+            StateHasChanged();
+        }
     }
 
     private async Task CargarRutas()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         rutas = await context.Rutas.ToListAsync();
     }
 
     private async Task CargarParadas()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         todasLasParadas = await context.Paradas.ToListAsync();
     }
 
@@ -288,14 +313,31 @@
         rutaSeleccionada2.DuracionEstimada = TimeSpan.FromHours(duracionHoras);
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         if (rutaSeleccionada2.Id == 0)
         {
+            if (CurrentEmpresaId.HasValue)
+            {
+                rutaSeleccionada2.EmpresaId = CurrentEmpresaId.Value;
+            }
             context.Rutas.Add(rutaSeleccionada2);
         }
         else
         {
-            context.Rutas.Update(rutaSeleccionada2);
+            // Para evitar problemas de tracking, obtener la ruta del contexto y actualizar sus propiedades
+            var rutaExistente = await context.Rutas.FindAsync(rutaSeleccionada2.Id);
+            if (rutaExistente != null)
+            {
+                rutaExistente.Nombre = rutaSeleccionada2.Nombre;
+                rutaExistente.Origen = rutaSeleccionada2.Origen;
+                rutaExistente.Destino = rutaSeleccionada2.Destino;
+                rutaExistente.DistanciaKm = rutaSeleccionada2.DistanciaKm;
+                rutaExistente.DuracionEstimada = rutaSeleccionada2.DuracionEstimada;
+                rutaExistente.PrecioBase = rutaSeleccionada2.PrecioBase;
+                rutaExistente.Activa = rutaSeleccionada2.Activa;
+            }
         }
         
         await context.SaveChangesAsync();
@@ -308,6 +350,8 @@
     private async Task EliminarRuta(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var ruta = await context.Rutas.FindAsync(id);
         if (ruta != null)
         {
@@ -359,6 +403,8 @@
         paradaSeleccionada.TiempoDesdeInicio = TimeSpan.FromHours(tiempoDesdeInicioHoras);
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         if (paradaSeleccionada.Id == 0)
         {
@@ -390,6 +436,8 @@
     private async Task EliminarParada(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var parada = await context.Paradas.FindAsync(id);
         if (parada != null)
         {
@@ -418,5 +466,11 @@
             return $"{horas}h {minutos}m";
         
         return $"{horas}h";
+    }
+
+    private async Task EditarRutaDobleClick(Ruta ruta)
+    {
+        EditarRuta(ruta);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('rutaModal')).show()");
     }
 }

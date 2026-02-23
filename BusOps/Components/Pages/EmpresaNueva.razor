@@ -1,0 +1,269 @@
+@page "/empresas/nueva"
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using System.ComponentModel.DataAnnotations
+@using BusOps.Data
+@using BusOps.Models
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Nueva Empresa - BusOps</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-building"></i> Nueva Empresa</h2>
+        <button class="btn btn-secondary" @onclick="Volver">
+            <i class="bi bi-arrow-left"></i> Volver
+        </button>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <EditForm Model="@model" OnValidSubmit="GuardarEmpresa">
+                        <DataAnnotationsValidator />
+                        
+                        <h5 class="mb-3">Información Básica</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre Comercial *</label>
+                                <InputText @bind-Value="model.NombreComercial" class="form-control" @oninput="GenerarSlug" />
+                                <ValidationMessage For="@(() => model.NombreComercial)" />
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Slug (URL) *</label>
+                                <InputText @bind-Value="model.Slug" class="form-control" />
+                                <small class="text-muted">URL: busops.com/@model.Slug</small>
+                                <ValidationMessage For="@(() => model.Slug)" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Plan de Suscripción *</label>
+                                <InputSelect @bind-Value="model.PlanSuscripcion" class="form-select">
+                                    <option value="Basico">Básico</option>
+                                    <option value="Profesional">Profesional</option>
+                                    <option value="Empresarial">Empresarial</option>
+                                </InputSelect>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Estado</label>
+                                <div class="form-check form-switch">
+                                    <InputCheckbox @bind-Value="model.Activa" class="form-check-input" id="activa" />
+                                    <label class="form-check-label" for="activa">
+                                        @(model.Activa ? "Activa" : "Inactiva")
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3 mt-4">Límites de Recursos</h5>
+                        <small class="text-muted">Dejar en blanco para sin límite</small>
+                        
+                        <div class="row mt-2">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Máximo Usuarios</label>
+                                <InputNumber @bind-Value="model.MaxUsuarios" class="form-control" />
+                            </div>
+                            
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Máximo Autobuses</label>
+                                <InputNumber @bind-Value="model.MaxAutobuses" class="form-control" />
+                            </div>
+                            
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Máximo Conductores</label>
+                                <InputNumber @bind-Value="model.MaxConductores" class="form-control" />
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3 mt-4">Configuración de la Empresa</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre Empresa *</label>
+                                <InputText @bind-Value="configModel.NombreEmpresa" class="form-control" />
+                                <ValidationMessage For="@(() => configModel.NombreEmpresa)" />
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">NIF *</label>
+                                <InputText @bind-Value="configModel.NIF" class="form-control" />
+                                <ValidationMessage For="@(() => configModel.NIF)" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Dirección *</label>
+                                <InputText @bind-Value="configModel.Direccion" class="form-control" />
+                                <ValidationMessage For="@(() => configModel.Direccion)" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Ciudad *</label>
+                                <InputText @bind-Value="configModel.Ciudad" class="form-control" />
+                                <ValidationMessage For="@(() => configModel.Ciudad)" />
+                            </div>
+                            
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Código Postal *</label>
+                                <InputText @bind-Value="configModel.CodigoPostal" class="form-control" />
+                                <ValidationMessage For="@(() => configModel.CodigoPostal)" />
+                            </div>
+                            
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Provincia *</label>
+                                <InputText @bind-Value="configModel.Provincia" class="form-control" />
+                                <ValidationMessage For="@(() => configModel.Provincia)" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Teléfono *</label>
+                                <InputText @bind-Value="configModel.Telefono" class="form-control" />
+                                <ValidationMessage For="@(() => configModel.Telefono)" />
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Email *</label>
+                                <InputText @bind-Value="configModel.Email" class="form-control" type="email" />
+                                <ValidationMessage For="@(() => configModel.Email)" />
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-4">
+                            <button type="button" class="btn btn-secondary" @onclick="Volver">Cancelar</button>
+                            <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                                @if (isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>Guardando...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-save"></i>
+                                    <span> Crear Empresa</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private EmpresaModel model = new();
+    private ConfiguracionModel configModel = new();
+    private bool isSaving = false;
+
+    private void GenerarSlug(ChangeEventArgs e)
+    {
+        var texto = e.Value?.ToString() ?? "";
+        model.Slug = texto.ToLower()
+            .Replace(" ", "-")
+            .Replace("á", "a").Replace("é", "e").Replace("í", "i").Replace("ó", "o").Replace("ú", "u")
+            .Replace("ñ", "n");
+    }
+
+    private async Task GuardarEmpresa()
+    {
+        isSaving = true;
+
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = true;
+
+            // Crear configuración primero
+            var configuracion = new ConfiguracionEmpresa
+            {
+                NombreEmpresa = configModel.NombreEmpresa,
+                NIF = configModel.NIF,
+                Direccion = configModel.Direccion,
+                Ciudad = configModel.Ciudad,
+                CodigoPostal = configModel.CodigoPostal,
+                Provincia = configModel.Provincia,
+                Telefono = configModel.Telefono,
+                Email = configModel.Email
+            };
+
+            context.ConfiguracionEmpresa.Add(configuracion);
+            await context.SaveChangesAsync();
+
+            // Crear empresa
+            var empresa = new Empresa
+            {
+                NombreComercial = model.NombreComercial,
+                Slug = model.Slug,
+                Activa = model.Activa,
+                FechaAlta = DateTime.Now,
+                PlanSuscripcion = model.PlanSuscripcion,
+                MaxUsuarios = model.MaxUsuarios,
+                MaxAutobuses = model.MaxAutobuses,
+                MaxConductores = model.MaxConductores,
+                ConfiguracionEmpresaId = configuracion.Id
+            };
+
+            context.Empresas.Add(empresa);
+            await context.SaveChangesAsync();
+
+            await JSRuntime.InvokeVoidAsync("alert", "Empresa creada exitosamente");
+            NavigationManager.NavigateTo("/empresas");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al crear empresa: {ex.Message}");
+            isSaving = false;
+        }
+    }
+
+    private void Volver()
+    {
+        NavigationManager.NavigateTo("/empresas");
+    }
+
+    public class EmpresaModel
+    {
+        [Required(ErrorMessage = "El nombre comercial es requerido")]
+        public string NombreComercial { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "El slug es requerido")]
+        public string Slug { get; set; } = string.Empty;
+
+        public bool Activa { get; set; } = true;
+
+        [Required]
+        public string PlanSuscripcion { get; set; } = "Basico";
+
+        public int? MaxUsuarios { get; set; }
+        public int? MaxAutobuses { get; set; }
+        public int? MaxConductores { get; set; }
+    }
+
+    public class ConfiguracionModel
+    {
+        [Required] public string NombreEmpresa { get; set; } = string.Empty;
+        [Required] public string NIF { get; set; } = string.Empty;
+        [Required] public string Direccion { get; set; } = string.Empty;
+        [Required] public string Ciudad { get; set; } = string.Empty;
+        [Required] public string CodigoPostal { get; set; } = string.Empty;
+        [Required] public string Provincia { get; set; } = string.Empty;
+        [Required] public string Telefono { get; set; } = string.Empty;
+        [Required] public string Email { get; set; } = string.Empty;
+    }
+}

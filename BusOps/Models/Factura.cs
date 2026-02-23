@@ -7,6 +7,7 @@ public class Factura
     public int Id { get; set; }
     public string NumeroFactura { get; set; } = string.Empty;
     public DateTime FechaEmision { get; set; }
+    public DateTime? FechaOperacion { get; set; }
     public DateTime? FechaVencimiento { get; set; }
     public int ClienteId { get; set; }
     public Cliente? Cliente { get; set; }
@@ -24,6 +25,20 @@ public class Factura
     public string? Observaciones { get; set; }
     public DateTime? FechaPago { get; set; }
     public FormaPago? FormaPago { get; set; }
+    
+    // Datos FacturaE
+    public string? LugarExpedicion { get; set; }
+    public string? CodigoPostalExpedicion { get; set; }
+    public DateTime? FechaPeriodoInicio { get; set; }
+    public DateTime? FechaPeriodoFin { get; set; }
+    public ClaseFactura ClaseFactura { get; set; } = ClaseFactura.Original;
+    public TipoFactura TipoFactura { get; set; } = TipoFactura.Completa;
+    public decimal DescuentosGenerales { get; set; } = 0m;
+    public decimal RecargosGenerales { get; set; } = 0m;
+    
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
     
     // Navegación
     public ICollection<LineaFactura> Lineas { get; set; } = new List<LineaFactura>();
@@ -70,4 +85,24 @@ public enum FormaPago
     Bizum,
     [Display(Name = "Domiciliación")]
     Domiciliacion
+}
+
+public enum ClaseFactura
+{
+    [Display(Name = "Original")]
+    Original,
+    [Display(Name = "Rectificativa")]
+    Rectificativa,
+    [Display(Name = "Recapitulativa")]
+    Recapitulativa
+}
+
+public enum TipoFactura
+{
+    [Display(Name = "Completa")]
+    Completa,
+    [Display(Name = "Abreviada")]
+    Abreviada,
+    [Display(Name = "AutoFactura")]
+    AutoFactura
 }

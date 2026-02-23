@@ -9,7 +9,12 @@ public class BusOpsDbContext : DbContext
     {
     }
 
+    // Propiedad para multi-tenancy
+    public int? CurrentEmpresaId { get; set; }
+    public bool IsSuperAdmin { get; set; }
+
     // DbSets
+    public DbSet<Empresa> Empresas { get; set; }
     public DbSet<Usuario> Usuarios { get; set; }
     public DbSet<ConfiguracionEmpresa> ConfiguracionEmpresa { get; set; }
     public DbSet<Autobus> Autobuses { get; set; }
@@ -23,6 +28,7 @@ public class BusOpsDbContext : DbContext
     public DbSet<Gasto> Gastos { get; set; }
     public DbSet<Proveedor> Proveedores { get; set; }
     public DbSet<Cliente> Clientes { get; set; }
+    public DbSet<CentroAdministrativo> CentrosAdministrativos { get; set; }
     public DbSet<Factura> Facturas { get; set; }
     public DbSet<LineaFactura> LineasFactura { get; set; }
     public DbSet<Presupuesto> Presupuestos { get; set; }
@@ -32,6 +38,33 @@ public class BusOpsDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // =====================================================
+        // Configuración: Empresa
+        // =====================================================
+        modelBuilder.Entity<Empresa>(entity =>
+        {
+            entity.ToTable("Empresas");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.NombreComercial).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Slug).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.Slug).IsUnique();
+            entity.Property(e => e.Activa).IsRequired();
+            entity.Property(e => e.FechaAlta).IsRequired();
+            entity.Property(e => e.PlanSuscripcion).IsRequired().HasMaxLength(50);
+            
+            // Relación uno a uno con ConfiguracionEmpresa
+            entity.HasOne(e => e.ConfiguracionEmpresa)
+                .WithOne(c => c.Empresa)
+                .HasForeignKey<Empresa>(e => e.ConfiguracionEmpresaId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Relaciones uno a muchos
+            entity.HasMany(e => e.Usuarios)
+                .WithOne(u => u.Empresa)
+                .HasForeignKey(u => u.EmpresaId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
 
         // =====================================================
         // Configuración: Usuario
@@ -50,18 +83,19 @@ public class BusOpsDbContext : DbContext
             
             entity.HasIndex(e => e.Username).IsUnique();
             
-            // Seed del usuario administrador por defecto
+            // Seed del super administrador por defecto
             entity.HasData(
                 new Usuario
                 {
                     Id = 1,
-                    Username = "admin",
+                    Username = "superadmin",
                     Password = "1234",
-                    NombreCompleto = "Administrador",
-                    Email = "admin@busops.com",
-                    Rol = "Administrador",
+                    NombreCompleto = "Super Administrador",
+                    Email = "superadmin@busops.com",
+                    Rol = Roles.SuperAdministrador,
                     Activo = true,
-                    FechaCreacion = DateTime.Now
+                    FechaCreacion = new DateTime(2026, 1, 1),
+                    EmpresaId = null // SuperAdmin no pertenece a ninguna empresa
                 }
             );
         });
@@ -79,13 +113,30 @@ public class BusOpsDbContext : DbContext
             entity.Property(e => e.Ciudad).IsRequired().HasMaxLength(100);
             entity.Property(e => e.CodigoPostal).IsRequired().HasMaxLength(10);
             entity.Property(e => e.Provincia).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Pais).HasMaxLength(3).HasDefaultValue("ESP");
             entity.Property(e => e.Telefono).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Fax).HasMaxLength(20);
             entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Web).HasMaxLength(255);
             entity.Property(e => e.IBAN).HasMaxLength(34);
             entity.Property(e => e.LogoRuta).HasMaxLength(500);
+            entity.Property(e => e.NombreComercial).HasMaxLength(200);
+            entity.Property(e => e.PersonaContacto).HasMaxLength(200);
+            entity.Property(e => e.CodigoINE).HasMaxLength(50);
+            entity.Property(e => e.CNAE).HasMaxLength(20);
+            entity.Property(e => e.LibroRegistro).HasMaxLength(50);
+            entity.Property(e => e.RegistroMercantil).HasMaxLength(100);
+            entity.Property(e => e.HojaRegistro).HasMaxLength(50);
+            entity.Property(e => e.FolioRegistro).HasMaxLength(50);
+            entity.Property(e => e.SeccionRegistro).HasMaxLength(50);
+            entity.Property(e => e.TomoRegistro).HasMaxLength(50);
+            entity.Property(e => e.TipoPersona).HasDefaultValue(TipoPersona.Juridica);
+            entity.Property(e => e.TipoResidencia).HasDefaultValue(TipoResidencia.Residente);
             entity.Property(e => e.SerieFactura).IsRequired().HasMaxLength(10);
             entity.Property(e => e.IVAPorDefecto).HasColumnType("decimal(5,2)");
+            
+            // EmpresaId es opcional - para multi-tenancy y query filters
+            entity.Property(e => e.EmpresaId).IsRequired(false);
         });
 
         // =====================================================
@@ -297,8 +348,15 @@ public class BusOpsDbContext : DbContext
             entity.Property(e => e.Direccion).HasMaxLength(255);
             entity.Property(e => e.Ciudad).HasMaxLength(100);
             entity.Property(e => e.CodigoPostal).HasMaxLength(10);
+            entity.Property(e => e.Provincia).HasMaxLength(100);
+            entity.Property(e => e.Pais).HasMaxLength(3).HasDefaultValue("ESP");
             entity.Property(e => e.Telefono).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Fax).HasMaxLength(20);
             entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.TipoPersona).HasConversion<string>().HasDefaultValue(TipoPersona.Juridica);
+            entity.Property(e => e.TipoResidencia).HasConversion<string>().HasDefaultValue(TipoResidencia.Residente);
+            entity.Property(e => e.PersonaContacto).HasMaxLength(200);
+            entity.Property(e => e.CodigoINE).HasMaxLength(50);
             entity.HasMany(e => e.Facturas)
                 .WithOne(f => f.Cliente)
                 .HasForeignKey(f => f.ClienteId)
@@ -325,9 +383,36 @@ public class BusOpsDbContext : DbContext
                 .HasConversion<string>();
             entity.Property(e => e.FormaPago)
                 .HasConversion<string>();
+            entity.Property(e => e.LugarExpedicion).HasMaxLength(200);
+            entity.Property(e => e.CodigoPostalExpedicion).HasMaxLength(10);
+            entity.Property(e => e.ClaseFactura).HasConversion<string>().HasDefaultValue(ClaseFactura.Original);
+            entity.Property(e => e.TipoFactura).HasConversion<string>().HasDefaultValue(TipoFactura.Completa);
+            entity.Property(e => e.DescuentosGenerales).HasColumnType("decimal(10,2)").HasDefaultValue(0m);
+            entity.Property(e => e.RecargosGenerales).HasColumnType("decimal(10,2)").HasDefaultValue(0m);
             entity.HasMany(e => e.Lineas)
                 .WithOne(l => l.Factura)
                 .HasForeignKey(l => l.FacturaId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // =====================================================
+        // Configuración: CentroAdministrativo
+        // =====================================================
+        modelBuilder.Entity<CentroAdministrativo>(entity =>
+        {
+            entity.ToTable("CentrosAdministrativos");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CodigoCentro).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.CodigoRol).IsRequired().HasMaxLength(2);
+            entity.Property(e => e.Nombre).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Direccion).HasMaxLength(200);
+            entity.Property(e => e.CodigoPostal).HasMaxLength(10);
+            entity.Property(e => e.Ciudad).HasMaxLength(100);
+            entity.Property(e => e.Provincia).HasMaxLength(100);
+            entity.Property(e => e.Pais).HasMaxLength(3).HasDefaultValue("ESP");
+            entity.HasOne(e => e.Cliente)
+                .WithMany(c => c.CentrosAdministrativos)
+                .HasForeignKey(e => e.ClienteId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -380,5 +465,104 @@ public class BusOpsDbContext : DbContext
                 .HasForeignKey(e => e.ClienteId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // =====================================================
+        // Configuración: Presupuesto
+        // =====================================================
+        modelBuilder.Entity<Presupuesto>(entity =>
+        {
+            entity.ToTable("Presupuestos");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.NumeroPresupuesto).IsRequired().HasMaxLength(50);
+            entity.HasIndex(e => e.NumeroPresupuesto).IsUnique();
+            entity.Property(e => e.BaseImponible).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.PorcentajeIVA).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.ImporteIVA).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.CargosAdicionales).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.PorcentajeRetencion).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.ImporteRetencion).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.Total).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.Estado).IsRequired();
+            entity.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Factura)
+                .WithMany()
+                .HasForeignKey(e => e.FacturaId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasMany(e => e.Lineas)
+                .WithOne(l => l.Presupuesto)
+                .HasForeignKey(l => l.PresupuestoId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // =====================================================
+        // Configuración: LineaPresupuesto
+        // =====================================================
+        modelBuilder.Entity<LineaPresupuesto>(entity =>
+        {
+            entity.ToTable("LineasPresupuesto");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.PrecioUnitario).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.Subtotal).HasColumnType("decimal(10,2)");
+            entity.HasOne(e => e.Viaje)
+                .WithMany()
+                .HasForeignKey(e => e.ViajeId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // =====================================================
+        // QUERY FILTERS para Multi-Tenancy
+        // =====================================================
+        // Solo aplicar filtros si NO es SuperAdmin y hay EmpresaId
+        // Usar comparación directa con nullable para evitar errores cuando CurrentEmpresaId es null
+        
+        modelBuilder.Entity<Autobus>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Cliente>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Conductor>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Factura>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Gasto>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<MantenimientoAutobus>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Presupuesto>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Proveedor>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Ruta>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Viaje>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Reserva>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Pasajero>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<Documento>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<ConfiguracionEmpresa>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        // Usuario: solo SuperAdmin puede ver todos, otros ven solo su empresa
+        modelBuilder.Entity<Usuario>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
     }
 }

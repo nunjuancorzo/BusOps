@@ -1,0 +1,143 @@
+@page "/proteccion-datos"
+@using BusOps.Data
+@using BusOps.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
+
+<PageTitle>Protección de Datos - BusOps</PageTitle>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="d-flex align-items-center mb-4">
+                <i class="bi bi-shield-lock fs-1 text-purple me-3"></i>
+                <h1 class="mb-0">Protección de Datos</h1>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    
+                    <h3 class="text-purple mb-3">1. Responsable del Tratamiento</h3>
+                    @if (configuracionEmpresa != null)
+                    {
+                        <div class="mb-4">
+                            <p><strong>Identidad:</strong> @configuracionEmpresa.NombreEmpresa</p>
+                            <p><strong>NIF:</strong> @configuracionEmpresa.NIF</p>
+                            <p><strong>Dirección:</strong> @configuracionEmpresa.Direccion, @configuracionEmpresa.CodigoPostal @configuracionEmpresa.Ciudad, @configuracionEmpresa.Provincia</p>
+                            <p><strong>Correo electrónico:</strong> @configuracionEmpresa.Email</p>
+                            <p><strong>Teléfono:</strong> @configuracionEmpresa.Telefono</p>
+                        </div>
+                    }
+
+                    <h3 class="text-purple mb-3">2. Finalidad del Tratamiento</h3>
+                    <p class="mb-4">
+                        Los datos personales que se recogen a través de esta aplicación serán tratados con las siguientes finalidades:
+                    </p>
+                    <ul class="mb-4">
+                        <li>Gestión de clientes, conductores y proveedores</li>
+                        <li>Emisión de facturas, presupuestos y documentación administrativa</li>
+                        <li>Gestión de reservas y viajes</li>
+                        <li>Control de la flota de autobuses y mantenimientos</li>
+                        <li>Cumplimiento de obligaciones legales y fiscales</li>
+                        <li>Gestión administrativa y contable de la empresa</li>
+                    </ul>
+
+                    <h3 class="text-purple mb-3">3. Base Legal del Tratamiento</h3>
+                    <p class="mb-4">
+                        La base legal para el tratamiento de los datos personales es:
+                    </p>
+                    <ul class="mb-4">
+                        <li><strong>Ejecución de un contrato:</strong> Necesario para la prestación de servicios de transporte</li>
+                        <li><strong>Obligación legal:</strong> Cumplimiento de obligaciones fiscales, mercantiles y de seguridad</li>
+                        <li><strong>Interés legítimo:</strong> Gestión administrativa y comercial de la empresa</li>
+                        <li><strong>Consentimiento:</strong> En los casos que sea necesario, se solicitará el consentimiento expreso del interesado</li>
+                    </ul>
+
+                    <h3 class="text-purple mb-3">4. Conservación de los Datos</h3>
+                    <p class="mb-4">
+                        Los datos personales se conservarán durante el tiempo necesario para cumplir con la finalidad 
+                        para la que se recabaron y para determinar las posibles responsabilidades que se pudieran derivar 
+                        de dicha finalidad y del tratamiento de los datos, además de los periodos establecidos en la 
+                        normativa de archivo y documentación (generalmente 6 años desde la última factura emitida).
+                    </p>
+
+                    <h3 class="text-purple mb-3">5. Destinatarios de los Datos</h3>
+                    <p class="mb-4">
+                        Los datos podrán ser comunicados a:
+                    </p>
+                    <ul class="mb-4">
+                        <li>Organismos públicos: Agencia Tributaria, Seguridad Social, y otros organismos cuando exista una obligación legal</li>
+                        <li>Entidades financieras: Para la gestión de cobros y pagos</li>
+                        <li>Asesorías y gestorías: Para el cumplimiento de obligaciones fiscales y laborales</li>
+                        <li>Proveedores de servicios tecnológicos: Hosting, almacenamiento en la nube (bajo acuerdos de confidencialidad)</li>
+                    </ul>
+
+                    <h3 class="text-purple mb-3">6. Derechos del Interesado</h3>
+                    <p class="mb-3">
+                        Los usuarios tienen derecho a:
+                    </p>
+                    <ul class="mb-4">
+                        <li><strong>Acceso:</strong> Conocer qué datos personales están siendo tratados</li>
+                        <li><strong>Rectificación:</strong> Solicitar la corrección de datos inexactos o incompletos</li>
+                        <li><strong>Supresión:</strong> Solicitar la eliminación de los datos cuando no sean necesarios</li>
+                        <li><strong>Oposición:</strong> Oponerse al tratamiento de los datos en determinadas circunstancias</li>
+                        <li><strong>Limitación:</strong> Solicitar la limitación del tratamiento de los datos</li>
+                        <li><strong>Portabilidad:</strong> Recibir los datos en un formato estructurado y de uso común</li>
+                        <li><strong>Retirada del consentimiento:</strong> En los casos en que el tratamiento se base en el consentimiento</li>
+                    </ul>
+                    <p class="mb-4">
+                        Para ejercer estos derechos, puede dirigirse a @(configuracionEmpresa?.Email ?? "la dirección de correo de la empresa") 
+                        adjuntando copia de su DNI o documento equivalente.
+                    </p>
+
+                    <h3 class="text-purple mb-3">7. Reclamación ante la Autoridad de Control</h3>
+                    <p class="mb-4">
+                        Si considera que el tratamiento de sus datos personales no se ajusta a la normativa vigente, 
+                        puede presentar una reclamación ante la Agencia Española de Protección de Datos (AEPD) a través de su 
+                        sede electrónica: <a href="https://www.aepd.es" target="_blank">www.aepd.es</a>
+                    </p>
+
+                    <h3 class="text-purple mb-3">8. Medidas de Seguridad</h3>
+                    <p class="mb-4">
+                        Se han implementado las medidas de seguridad técnicas y organizativas necesarias para garantizar 
+                        la seguridad de los datos personales y evitar su alteración, pérdida, tratamiento o acceso no autorizado, 
+                        teniendo en cuenta el estado de la tecnología, la naturaleza de los datos almacenados y los riesgos a los que están expuestos.
+                    </p>
+
+                    <div class="alert alert-info mt-4">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Última actualización:</strong> Febrero 2026
+                    </div>
+
+                    <div class="text-center mt-4">
+                        <a href="/" class="btn btn-purple">
+                            <i class="bi bi-arrow-left me-2"></i>Volver al Inicio
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private ConfiguracionEmpresa? configuracionEmpresa;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfiguracion();
+    }
+
+    private async Task CargarConfiguracion()
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            configuracionEmpresa = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar configuración: {ex.Message}");
+        }
+    }
+}

@@ -1,6 +1,10 @@
 ﻿@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.EntityFrameworkCore
+@using BusOps.Data
+@using BusOps.Models
 @inject ProtectedSessionStorage SessionStorage
 @inject NavigationManager NavigationManager
+@inject IDbContextFactory<BusOpsDbContext> DbFactory
 @rendermode InteractiveServer
 
 <nav class="navbar navbar-expand-lg navbar-dark shadow-sm" style="background: linear-gradient(135deg, #2d0a59 0%, #6a1b9a 50%, #2d0a59 100%); min-height: 80px; border-bottom: 2px solid rgba(255, 255, 255, 0.1); position: sticky; top: 0; z-index: 1030;">
@@ -71,27 +75,90 @@
                         </ul>
                     </li>
                     
-                    @if (userRole == "Administrador")
+                    @if (userRole == "Administrador" || userRole == "SuperAdministrador")
                     {
-                        <li class="nav-item">
-                            <a class="nav-link text-white px-3 py-2 rounded transition d-flex align-items-center" href="configuracion" style="transition: all 0.3s ease;">
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle text-white px-3 py-2 rounded transition d-flex align-items-center" href="#" id="navbarDropdownConfiguracion" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="transition: all 0.3s ease;">
                                 <i class="bi bi-gear-fill me-2" style="font-size: 1.4rem; color: #607D8B;"></i> Configuración
                             </a>
+                            <ul class="dropdown-menu" aria-labelledby="navbarDropdownConfiguracion">
+                                <li><a class="dropdown-item d-flex align-items-center" href="configuracion"><i class="bi bi-sliders me-2" style="font-size: 1.2rem; color: #607D8B;"></i>General</a></li>
+                                @if (userRole == "SuperAdministrador")
+                                {
+                                    <li><a class="dropdown-item d-flex align-items-center" href="empresas"><i class="bi bi-building-fill me-2" style="font-size: 1.2rem; color: #00BCD4;"></i>Empresas</a></li>
+                                }
+                            </ul>
                         </li>
                     }
                 </ul>
 
                 <div class="d-flex align-items-center text-white">
-                    <div class="me-2 d-none d-md-flex align-items-center" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border-radius: 6px; backdrop-filter: blur(10px);">
-                        <i class="bi bi-person-circle me-1" style="font-size: 0.95rem;"></i>
-                        <div>
-                            <div style="font-size: 0.75rem; font-weight: 500;">@username</div>
-                            <div style="font-size: 0.65rem; opacity: 0.8;">@userRole</div>
-                        </div>
+                    <div class="dropdown">
+                        <button class="btn btn-link dropdown-toggle text-white text-decoration-none d-flex align-items-center" type="button" id="dropdownUser" data-bs-toggle="dropdown" aria-expanded="false" style="padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border-radius: 6px; backdrop-filter: blur(10px);">
+                            <i class="bi bi-person-circle me-2" style="font-size: 1.2rem;"></i>
+                            <div class="text-start">
+                                <div style="font-size: 0.75rem; font-weight: 500;">@username</div>
+                                <div style="font-size: 0.65rem; opacity: 0.8;">@userRole</div>
+                                @if (empresaSeleccionada.HasValue && empresas.Any())
+                                {
+                                    var empresaActual = empresas.FirstOrDefault(e => e.Id == empresaSeleccionada.Value);
+                                    if (empresaActual != null)
+                                    {
+                                        <div style="font-size: 0.6rem; opacity: 0.7; margin-top: 2px;">
+                                            <i class="bi bi-building" style="font-size: 0.55rem;"></i> @empresaActual.NombreComercial
+                                        </div>
+                                    }
+                                }
+                                else if (userRole == "SuperAdministrador" && !empresaSeleccionada.HasValue)
+                                {
+                                    <div style="font-size: 0.6rem; opacity: 0.7; margin-top: 2px;">
+                                        <i class="bi bi-globe" style="font-size: 0.55rem;"></i> Todas las empresas
+                                    </div>
+                                }
+                            </div>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownUser">\n                            @if (userRole == "SuperAdministrador" || (userRole == "Administrador" && empresas.Any()))
+                            {
+                                <li><h6 class="dropdown-header">Cambiar empresa</h6></li>
+                                @if (userRole == "SuperAdministrador")
+                                {
+                                    <li>
+                                        <a class="dropdown-item" @onclick="() => CambiarEmpresaModal(null)">
+                                            <i class="bi bi-globe me-2"></i>Ver todas las empresas
+                                        </a>
+                                    </li>
+                                }
+                                @foreach (var empresa in empresas)
+                                {
+                                    <li>
+                                        <a class="dropdown-item @(empresaSeleccionada == empresa.Id ? "active" : "")" @onclick="() => CambiarEmpresaModal(empresa.Id)">
+                                            <i class="bi bi-building me-2"></i>@empresa.NombreComercial
+                                        </a>
+                                    </li>
+                                }
+                                <li><hr class="dropdown-divider"></li>
+                            }
+                            <li>
+                                <a class="dropdown-item" href="cambiar-password">
+                                    <i class="bi bi-key-fill me-2"></i>Cambiar Contraseña
+                                </a>
+                            </li>
+                            @if (userRole == "SuperAdministrador")
+                            {
+                                <li>
+                                    <a class="dropdown-item" href="usuarios">
+                                        <i class="bi bi-people-fill me-2"></i>Gestión de Usuarios
+                                    </a>
+                                </li>
+                            }
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" @onclick="Logout">
+                                    <i class="bi bi-box-arrow-right me-2"></i>Cerrar sesión
+                                </a>
+                            </li>
+                        </ul>
                     </div>
-                    <button @onclick="Logout" class="btn btn-outline-light btn-sm" style="padding: 4px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 500; transition: all 0.3s ease;">
-                        <i class="bi bi-box-arrow-right" style="font-size: 0.85rem;"></i> Salir
-                    </button>
                 </div>
             }
         </div>
@@ -124,6 +191,8 @@
     private string userRole = "Usuario";
     private bool hasCheckedAuth = false;
     private bool showUserInfo = false;
+    private List<Empresa> empresas = new();
+    private int? empresaSeleccionada = null;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -132,6 +201,13 @@
             hasCheckedAuth = true;
             var usernameResult = await SessionStorage.GetAsync<string>("username");
             var roleResult = await SessionStorage.GetAsync<string>("userRole");
+            var empresaIdResult = await SessionStorage.GetAsync<int?>("EmpresaId");
+            
+            Console.WriteLine($"🔐 NAVMENU - OnAfterRenderAsync");
+            Console.WriteLine($"   username: '{usernameResult.Value ?? "NULL"}'");
+            Console.WriteLine($"   userRole: '{roleResult.Value ?? "NULL"}'");
+            Console.WriteLine($"   EmpresaId: {empresaIdResult.Value?.ToString() ?? "NULL"}");
+            Console.WriteLine($"   Roles.SuperAdministrador: '{Roles.SuperAdministrador}'");
             
             if (usernameResult.Success && !string.IsNullOrEmpty(usernameResult.Value))
             {
@@ -142,10 +218,98 @@
             if (roleResult.Success && !string.IsNullOrEmpty(roleResult.Value))
             {
                 userRole = roleResult.Value;
+                
+                Console.WriteLine($"   userRole == Roles.SuperAdministrador: {userRole == Roles.SuperAdministrador}");
+                Console.WriteLine($"   userRole == Roles.Administrador: {userRole == Roles.Administrador}");
+                
+                // Cargar empresas para SuperAdmin y Administrador
+                if (userRole == Roles.SuperAdministrador || userRole == Roles.Administrador)
+                {
+                    await CargarEmpresas();
+                }
+            }
+            
+            if (empresaIdResult.Success)
+            {
+                empresaSeleccionada = empresaIdResult.Value;
             }
             
             StateHasChanged();
         }
+    }
+
+    private async Task CargarEmpresas()
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            
+            if (userRole == Roles.SuperAdministrador)
+            {
+                // SuperAdmin ve todas las empresas
+                context.IsSuperAdmin = true;
+                empresas = await context.Empresas
+                    .Where(e => e.Activa)
+                    .OrderBy(e => e.NombreComercial)
+                    .ToListAsync();
+            }
+            else if (userRole == Roles.Administrador && empresaSeleccionada.HasValue)
+            {
+                // Administrador solo ve su empresa
+                context.CurrentEmpresaId = empresaSeleccionada;
+                empresas = await context.Empresas
+                    .Where(e => e.Activa && e.Id == empresaSeleccionada.Value)
+                    .ToListAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error cargando empresas: {ex.Message}");
+        }
+    }
+
+    private async Task CambiarEmpresa(ChangeEventArgs e)
+    {
+        var empresaIdStr = e.Value?.ToString();
+        
+        if (string.IsNullOrEmpty(empresaIdStr))
+        {
+            // Ver todas las empresas (sin filtro)
+            await SessionStorage.DeleteAsync("EmpresaId");
+            empresaSeleccionada = null;
+        }
+        else
+        {
+            var empresaId = int.Parse(empresaIdStr);
+            await SessionStorage.SetAsync("EmpresaId", empresaId);
+            empresaSeleccionada = empresaId;
+        }
+        
+        // Recargar la página para aplicar el filtro
+        NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
+    }
+    
+    private async Task CambiarEmpresaModal(int? empresaId)
+    {
+        Console.WriteLine($"🔄 CambiarEmpresaModal - EmpresaId solicitado: {empresaId?.ToString() ?? "NULL (ver todas)"}");
+        
+        if (!empresaId.HasValue)
+        {
+            // Ver todas las empresas (sin filtro)
+            await SessionStorage.DeleteAsync("EmpresaId");
+            empresaSeleccionada = null;
+            Console.WriteLine($"✅ EmpresaId eliminado de SessionStorage");
+        }
+        else
+        {
+            await SessionStorage.SetAsync("EmpresaId", empresaId.Value);
+            empresaSeleccionada = empresaId;
+            Console.WriteLine($"✅ EmpresaId guardado en SessionStorage: {empresaId.Value}");
+        }
+        
+        Console.WriteLine($"🔄 Navegando a / con forceLoad: true");
+        // Recargar la página para aplicar el filtro
+        NavigationManager.NavigateTo("/", forceLoad: true);
     }
 
     private async Task Logout()
@@ -154,6 +318,7 @@
         await SessionStorage.DeleteAsync("username");
         await SessionStorage.DeleteAsync("userRole");
         await SessionStorage.DeleteAsync("userId");
+        await SessionStorage.DeleteAsync("EmpresaId");
         NavigationManager.NavigateTo("/login", forceLoad: true);
     }
 }

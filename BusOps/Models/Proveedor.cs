@@ -20,6 +20,10 @@ public class Proveedor
     public decimal? LimiteCredito { get; set; }
     public int? DiasPago { get; set; }
 
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+
     // Relaciones
     public ICollection<Documento> Documentos { get; set; } = new List<Documento>();
 }

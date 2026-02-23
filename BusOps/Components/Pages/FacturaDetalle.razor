@@ -10,6 +10,7 @@
 @inject IJSRuntime JSRuntime
 @inject EmailService EmailService
 @inject FacturaPdfService FacturaPdfService
+@inject FacturaEService FacturaEService
 @rendermode InteractiveServer
 
 <PageTitle>@(Id == 0 ? "Nueva Factura" : "Editar Factura") - BusOps</PageTitle>
@@ -21,6 +22,9 @@
         {
             <button class="btn btn-success" @onclick="EnviarPorEmail" title="Enviar por Email">
                 <i class="bi bi-envelope-fill"></i> Enviar Email
+            </button>
+            <button class="btn btn-warning" @onclick="ExportarFacturaE" title="Exportar a FacturaE">
+                <i class="bi bi-file-earmark-code"></i> FacturaE XML
             </button>
             <button class="btn btn-info" @onclick="Imprimir" title="Imprimir">
                 <i class="bi bi-printer-fill"></i> Imprimir
@@ -44,8 +48,25 @@
                 <input type="date" class="form-control" @bind="factura.FechaEmision" />
             </div>
             <div class="col-md-4 mb-3">
+                <label class="form-label">Fecha Operación</label>
+                <input type="date" class="form-control" @bind="factura.FechaOperacion" />
+                <small class="text-muted">Fecha real del servicio (opcional)</small>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
                 <label class="form-label">Fecha Vencimiento *</label>
                 <input type="date" class="form-control" @bind="factura.FechaVencimiento" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Período Inicio</label>
+                <input type="date" class="form-control" @bind="factura.FechaPeriodoInicio" />
+                <small class="text-muted">Para servicios periódicos</small>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Período Fin</label>
+                <input type="date" class="form-control" @bind="factura.FechaPeriodoFin" />
+                <small class="text-muted">Para servicios periódicos</small>
             </div>
         </div>
         <div class="row">
@@ -90,6 +111,19 @@
         
         <div class="row">
             <div class="col-md-6 mb-3">
+                <label class="form-label">Descuentos Generales (€)</label>
+                <input type="number" step="0.01" class="form-control" @bind="factura.DescuentosGenerales" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                <small class="text-muted">Descuentos sobre el total de la factura</small>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Recargos Generales (€)</label>
+                <input type="number" step="0.01" class="form-control" @bind="factura.RecargosGenerales" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                <small class="text-muted">Recargos adicionales (ej: recargo de equivalencia)</small>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6 mb-3">
                 <label class="form-label">Cargos Adicionales (€)</label>
                 <input type="number" step="0.01" class="form-control" @bind="factura.CargosAdicionales" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
                 <small class="text-muted">Gastos de envío, gestión, etc.</small>
@@ -118,8 +152,43 @@
         
         <div class="alert alert-info" role="alert">
             <small>
-                <strong>Cálculo:</strong> Base Imponible (@factura.BaseImponible.ToString("C2")) + IVA (@factura.ImporteIVA.ToString("C2")) + Cargos (@factura.CargosAdicionales.ToString("C2")) - Retención (@factura.ImporteRetencion.ToString("C2")) = <strong>@factura.Total.ToString("C2")</strong>
+                <strong>Cálculo:</strong> Base Imponible (@factura.BaseImponible.ToString("C2")) - Descuentos (@factura.DescuentosGenerales.ToString("C2")) + Recargos (@factura.RecargosGenerales.ToString("C2")) + IVA (@factura.ImporteIVA.ToString("C2")) + Cargos (@factura.CargosAdicionales.ToString("C2")) - Retención (@factura.ImporteRetencion.ToString("C2")) = <strong>@factura.Total.ToString("C2")</strong>
             </small>
+        </div>
+        
+        <hr />
+        <h5 class="mb-3"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE</h5>
+        
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Clase de Factura</label>
+                <select class="form-select" @bind="factura.ClaseFactura">
+                    @foreach (var clase in Enum.GetValues<ClaseFactura>())
+                    {
+                        <option value="@clase">@clase.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Tipo de Factura</label>
+                <select class="form-select" @bind="factura.TipoFactura">
+                    @foreach (var tipo in Enum.GetValues<TipoFactura>())
+                    {
+                        <option value="@tipo">@tipo.GetDisplayName()</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Lugar de Expedición</label>
+                <input type="text" class="form-control" @bind="factura.LugarExpedicion" placeholder="Ciudad de emisión" />
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">CP Expedición</label>
+                <input type="text" class="form-control" @bind="factura.CodigoPostalExpedicion" placeholder="Código postal" />
+            </div>
         </div>
         
         <hr />
@@ -214,25 +283,48 @@
         // Obtener la configuración para la serie de factura
         var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
         string serie = config?.SerieFactura ?? "FAC";
+        string subserie = config?.SubserieFactura ?? "";
+        bool incluirAnio = config?.IncluirAñoEnSerie ?? true;
+        bool incluirMes = config?.IncluirMesEnSerie ?? false;
+        int longitudNumero = config?.LongitudNumeroFactura ?? 2;
         
         // Obtener el último número de factura de este año
         int anioActual = DateTime.Now.Year;
+        int mesActual = DateTime.Now.Month;
         var ultimaFactura = await context.Facturas
             .Where(f => f.FechaEmision.Year == anioActual)
             .OrderByDescending(f => f.Id)
             .FirstOrDefaultAsync();
         
-        int siguienteNumero = 1;
+        int siguienteNumero = config?.NumeroFacturaActual ?? 1;
         if (ultimaFactura != null)
         {
-            var partes = ultimaFactura.NumeroFactura.Split('-');
-            if (partes.Length >= 3 && int.TryParse(partes[2], out int numero))
+            // Intentar extraer el número de la última factura
+            // Puede ser formato AYE2026A02-0001 o FAC-2026-001
+            string numFactura = ultimaFactura.NumeroFactura;
+            
+            // Intenta extraer el número final de cualquier formato
+            var match = System.Text.RegularExpressions.Regex.Match(numFactura, @"(\d+)$");
+            if (match.Success && int.TryParse(match.Value, out int numero))
             {
                 siguienteNumero = numero + 1;
             }
         }
         
-        string numeroFactura = $"{serie}-{anioActual}-{siguienteNumero:D3}";
+        // Generar el número de factura según configuración
+        string numeroFactura;
+        if (incluirAnio)
+        {
+            // Formato: SERIE + AÑO + SUBSERIE + [MES] + [-] + NUMERO (ej: AYE2026A02-0001)
+            var mes = incluirMes ? mesActual.ToString("D2") : "";
+            var separador = incluirMes ? "-" : "";
+            numeroFactura = $"{serie}{anioActual}{subserie}{mes}{separador}{siguienteNumero.ToString().PadLeft(longitudNumero, '0')}";
+        }
+        else
+        {
+            // Formato antiguo: SERIE-NUMERO
+            numeroFactura = $"{serie}-{siguienteNumero.ToString().PadLeft(longitudNumero, '0')}";
+        }
         decimal ivaPorDefecto = config?.IVAPorDefecto ?? 21m;
         
         factura = new Factura 
@@ -247,16 +339,19 @@
 
     private void CalcularTotal()
     {
-        // Calcular IVA
-        var iva = factura.BaseImponible * (factura.PorcentajeIVA / 100);
+        // Base imponible después de descuentos y recargos
+        var baseAntesImpuestos = factura.BaseImponible - factura.DescuentosGenerales + factura.RecargosGenerales;
+        
+        // Calcular IVA sobre la base ajustada
+        var iva = baseAntesImpuestos * (factura.PorcentajeIVA / 100);
         factura.ImporteIVA = iva;
         
-        // Calcular retención
+        // Calcular retención sobre la base original
         var retencion = factura.BaseImponible * (factura.PorcentajeRetencion / 100);
         factura.ImporteRetencion = retencion;
         
-        // Calcular total: Base + IVA + Cargos - Retención
-        factura.Total = factura.BaseImponible + iva + factura.CargosAdicionales - retencion;
+        // Calcular total: Base - Descuentos + Recargos + IVA + Cargos - Retención
+        factura.Total = baseAntesImpuestos + iva + factura.CargosAdicionales - retencion;
     }
 
     private async Task Guardar()
@@ -268,13 +363,27 @@
         if (factura.Id == 0)
         {
             context.Facturas.Add(factura);
+            await context.SaveChangesAsync();
+            
+            // Actualizar el número actual en configuración
+            var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+            if (config != null)
+            {
+                // Extraer el número de la factura recién creada
+                var match = System.Text.RegularExpressions.Regex.Match(factura.NumeroFactura, @"(\d+)$");
+                if (match.Success && int.TryParse(match.Value, out int numeroUsado))
+                {
+                    config.NumeroFacturaActual = numeroUsado + 1;
+                    await context.SaveChangesAsync();
+                }
+            }
         }
         else
         {
             context.Facturas.Update(factura);
+            await context.SaveChangesAsync();
         }
         
-        await context.SaveChangesAsync();
         NavigationManager.NavigateTo("/facturas");
     }
 
@@ -437,6 +546,28 @@
         else
         {
             await JSRuntime.InvokeVoidAsync("alert", "Error al enviar el email. Verifique la configuración.");
+        }
+    }
+
+    private async Task ExportarFacturaE()
+    {
+        try
+        {
+            var xml = await FacturaEService.GenerarFacturaEXmlAsync(Id);
+            
+            // Convertir el XML a bytes
+            var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xml);
+            var base64 = Convert.ToBase64String(xmlBytes);
+            
+            // Descargar el archivo usando JavaScript
+            var nombreArchivo = $"Factura_{factura.NumeroFactura.Replace("/", "-")}_{DateTime.Now:yyyyMMdd}.xml";
+            await JSRuntime.InvokeVoidAsync("downloadFile", nombreArchivo, base64, "text/xml");
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Factura exportada a formato FacturaE correctamente.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar a FacturaE: {ex.Message}");
         }
     }
 }

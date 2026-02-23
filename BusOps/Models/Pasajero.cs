@@ -10,6 +10,10 @@ public class Pasajero
     public string Email { get; set; } = string.Empty;
     public DateTime FechaNacimiento { get; set; }
     
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+    
     // Relaciones
     public ICollection<Reserva> Reservas { get; set; } = new List<Reserva>();
 }

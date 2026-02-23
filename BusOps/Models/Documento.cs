@@ -29,4 +29,8 @@ public class Documento
 
     public int? ClienteId { get; set; }
     public Cliente? Cliente { get; set; }
+    
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
 }

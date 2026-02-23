@@ -14,8 +14,145 @@
 
 <PageTitle>BusOps - Login</PageTitle>
 
-<div class="d-flex justify-content-center align-items-center" style="min-height: 100vh; background-color: #ffffff;">
-    <div class="card shadow-lg" style="width: 400px; border-radius: 15px;">
+<style>
+    .login-container {
+        min-height: 100vh;
+        height: 100vh;
+        width: 100vw;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: fixed;
+        top: 0;
+        left: 0;
+        overflow: hidden;
+        background: linear-gradient(-45deg, #E3F2FD, #BBDEFB, #E1BEE7, #F3E5F5);
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
+    }
+
+    @@keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    .floating-shapes {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        z-index: 1;
+    }
+
+    .shape {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        animation: float 20s infinite ease-in-out;
+    }
+
+    .shape-1 {
+        width: 300px;
+        height: 300px;
+        top: 10%;
+        left: 10%;
+        animation-delay: 0s;
+        animation-duration: 25s;
+    }
+
+    .shape-2 {
+        width: 200px;
+        height: 200px;
+        top: 60%;
+        right: 15%;
+        animation-delay: 5s;
+        animation-duration: 20s;
+    }
+
+    .shape-3 {
+        width: 150px;
+        height: 150px;
+        bottom: 20%;
+        left: 20%;
+        animation-delay: 2s;
+        animation-duration: 18s;
+    }
+
+    .shape-4 {
+        width: 250px;
+        height: 250px;
+        top: 30%;
+        right: 25%;
+        animation-delay: 7s;
+        animation-duration: 22s;
+    }
+
+    .shape-5 {
+        width: 180px;
+        height: 180px;
+        bottom: 10%;
+        right: 10%;
+        animation-delay: 3s;
+        animation-duration: 19s;
+    }
+
+    @@keyframes float {
+        0%, 100% {
+            transform: translate(0, 0) rotate(0deg);
+            opacity: 0.3;
+        }
+        25% {
+            transform: translate(30px, -30px) rotate(90deg);
+            opacity: 0.5;
+        }
+        50% {
+            transform: translate(-20px, 20px) rotate(180deg);
+            opacity: 0.4;
+        }
+        75% {
+            transform: translate(20px, 30px) rotate(270deg);
+            opacity: 0.6;
+        }
+    }
+
+    .login-card {
+        position: relative;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        animation: fadeInUp 0.8s ease-out;
+    }
+
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .login-card:hover {
+        transform: translateY(-5px);
+        transition: transform 0.3s ease;
+    }
+</style>
+
+<div class="login-container">
+    <!-- Formas flotantes de fondo -->
+    <div class="floating-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+        <div class="shape shape-4"></div>
+        <div class="shape shape-5"></div>
+    </div>
+
+    <div class="card shadow-lg login-card" style="width: 400px; border-radius: 15px;">
         <div class="card-body p-5">
             <div class="text-center mb-4">
                 <div class="d-flex justify-content-center mb-3">
@@ -145,7 +282,11 @@
         try
         {
             using var context = await DbFactory.CreateDbContextAsync();
+            
+            // Buscar usuario sin incluir Empresa primero
+            // IMPORTANTE: Ignorar Query Filters durante el login para permitir acceso al SuperAdmin
             var usuario = await context.Usuarios
+                .IgnoreQueryFilters()
                 .FirstOrDefaultAsync(u => u.Username == loginModel.Username && u.Password == loginModel.Password && u.Activo);
 
             if (usuario != null)
@@ -166,10 +307,43 @@
                 }
                 
                 // Login exitoso
+                Console.WriteLine($"🔐 LOGIN - Usuario encontrado: {usuario.Username}");
+                Console.WriteLine($"   Rol: '{usuario.Rol}'");
+                Console.WriteLine($"   EmpresaId: {usuario.EmpresaId?.ToString() ?? "NULL"}");
+                
                 await SessionStorage.SetAsync("isAuthenticated", true);
                 await SessionStorage.SetAsync("username", usuario.Username);
                 await SessionStorage.SetAsync("userRole", usuario.Rol);
                 await SessionStorage.SetAsync("userId", usuario.Id);
+                
+                Console.WriteLine($"✅ Datos guardados en SessionStorage");
+                Console.WriteLine($"   usuario.Rol == Roles.SuperAdministrador: {usuario.Rol == Roles.SuperAdministrador}");
+                
+                // Multi-tenant: Guardar EmpresaId si no es SuperAdmin
+                if (usuario.Rol != Roles.SuperAdministrador)
+                {
+                    if (usuario.EmpresaId.HasValue)
+                    {
+                        await SessionStorage.SetAsync("EmpresaId", usuario.EmpresaId.Value);
+                        
+                        // Verificar que la empresa está activa
+                        var empresa = await context.Empresas.FindAsync(usuario.EmpresaId.Value);
+                        if (empresa != null && !empresa.Activa)
+                        {
+                            errorMessage = "La empresa está desactivada. Contacte al administrador.";
+                            isLoading = false;
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // Usuario normal debe tener empresa
+                        errorMessage = "El usuario no tiene empresa asignada. Contacte al administrador.";
+                        isLoading = false;
+                        return;
+                    }
+                }
+                
                 NavigationManager.NavigateTo("/", forceLoad: true);
             }
             else

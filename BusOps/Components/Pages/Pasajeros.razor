@@ -1,8 +1,10 @@
 @page "/pasajeros"
 @using Microsoft.EntityFrameworkCore
 @using BusOps.Data
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Pasajeros</PageTitle>
@@ -17,7 +19,7 @@
 <div class="modal fade" id="pasajeroModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #4CAF50;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #BA68C8;">
                 <h5 class="modal-title">@(pasajeroSeleccionado.Id > 0 ? "Editar Pasajero" : "Nuevo Pasajero")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -96,7 +98,7 @@
                         var edad = CalcularEdad(pasajero.FechaNacimiento);
                         var numReservas = reservas.Count(r => r.PasajeroId == pasajero.Id);
                         
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarPasajeroDobleClick(pasajero)" title="Doble click para editar">
                             <td><strong>@pasajero.Nombre @pasajero.Apellidos</strong></td>
                             <td>@pasajero.DNI</td>
                             <td>@pasajero.FechaNacimiento.ToString("dd/MM/yyyy")</td>
@@ -224,6 +226,10 @@
     private Pasajero? pasajeroSeleccionadoReservas;
     private DateTime fechaNacimiento = DateTime.Now.AddYears(-30);
     private string terminoBusqueda = string.Empty;
+    
+    private bool IsSuperAdmin = false;
+    private int? CurrentEmpresaId = null;
+    private bool firstRender = true;
 
     private IEnumerable<Pasajero> PasajerosFiltrados
     {
@@ -241,21 +247,40 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarPasajeros();
-        await CargarReservas();
+        if (firstRender)
+        {
+            this.firstRender = false;
+            
+            var empresaIdResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var userRoleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (userRoleResult.Success)
+            {
+                IsSuperAdmin = userRoleResult.Value == "SuperAdministrador";
+            }
+            
+            await CargarPasajeros();
+            await CargarReservas();
+            StateHasChanged();
+        }
     }
 
     private async Task CargarPasajeros()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         pasajeros = await context.Pasajeros.ToListAsync();
     }
 
     private async Task CargarReservas()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         reservas = await context.Reservas
             .Include(r => r.Viaje)
             .ThenInclude(v => v.Ruta)
@@ -268,6 +293,30 @@
         fechaNacimiento = DateTime.Now.AddYears(-30);
     }
 
+    private async Task EditarPasajeroInterno(Pasajero pasajero)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
+        var pasajeroCompleto = await context.Pasajeros.FindAsync(pasajero.Id);
+        
+        if (pasajeroCompleto != null)
+        {
+            pasajeroSeleccionado = new Pasajero
+            {
+                Id = pasajeroCompleto.Id,
+                Nombre = pasajeroCompleto.Nombre,
+                Apellidos = pasajeroCompleto.Apellidos,
+                DNI = pasajeroCompleto.DNI,
+                Telefono = pasajeroCompleto.Telefono,
+                Email = pasajeroCompleto.Email,
+                FechaNacimiento = pasajeroCompleto.FechaNacimiento
+            };
+            fechaNacimiento = pasajeroCompleto.FechaNacimiento;
+        }
+    }
+    
     private void EditarPasajero(Pasajero pasajero)
     {
         pasajeroSeleccionado = new Pasajero
@@ -287,28 +336,48 @@
     {
         pasajeroSeleccionado.FechaNacimiento = fechaNacimiento;
 
-        using var context = await DbFactory.CreateDbContextAsync();
-        
-        if (pasajeroSeleccionado.Id == 0)
+        using (var context = await DbFactory.CreateDbContextAsync())
         {
-            context.Pasajeros.Add(pasajeroSeleccionado);
-        }
-        else
-        {
-            context.Pasajeros.Update(pasajeroSeleccionado);
+            context.IsSuperAdmin = IsSuperAdmin;
+            context.CurrentEmpresaId = CurrentEmpresaId;
+            
+            if (pasajeroSeleccionado.Id == 0)
+            {
+                if (CurrentEmpresaId.HasValue)
+                {
+                    pasajeroSeleccionado.EmpresaId = CurrentEmpresaId.Value;
+                }
+                context.Pasajeros.Add(pasajeroSeleccionado);
+            }
+            else
+            {
+                // Para evitar problemas de tracking, obtener el pasajero del contexto y actualizar sus propiedades
+                var pasajeroExistente = await context.Pasajeros.FindAsync(pasajeroSeleccionado.Id);
+                if (pasajeroExistente != null)
+                {
+                    pasajeroExistente.Nombre = pasajeroSeleccionado.Nombre;
+                    pasajeroExistente.Apellidos = pasajeroSeleccionado.Apellidos;
+                    pasajeroExistente.DNI = pasajeroSeleccionado.DNI;
+                    pasajeroExistente.Telefono = pasajeroSeleccionado.Telefono;
+                    pasajeroExistente.Email = pasajeroSeleccionado.Email;
+                    pasajeroExistente.FechaNacimiento = pasajeroSeleccionado.FechaNacimiento;
+                }
+            }
+            
+            await context.SaveChangesAsync();
         }
         
-        await context.SaveChangesAsync();
-        await CargarPasajeros();
-
         await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('pasajeroModal')).hide()");
-        pasajeroSeleccionado = null;
+        pasajeroSeleccionado = new Pasajero();
+        await CargarPasajeros();
         StateHasChanged();
     }
 
     private async Task EliminarPasajero(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var pasajero = await context.Pasajeros.FindAsync(id);
         if (pasajero != null)
         {
@@ -355,5 +424,11 @@
             EstadoReserva.Utilizada => "bg-secondary",
             _ => "bg-secondary"
         };
+    }
+
+    private async Task EditarPasajeroDobleClick(Pasajero pasajero)
+    {
+        EditarPasajero(pasajero);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('pasajeroModal')).show()");
     }
 }

@@ -2,6 +2,12 @@ using BusOps.Components;
 using BusOps.Data;
 using BusOps.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+
+// Configurar cultura española para toda la aplicación (formato €)
+var cultureInfo = new CultureInfo("es-ES");
+CultureInfo.DefaultThreadCurrentCulture = cultureInfo;
+CultureInfo.DefaultThreadCurrentUICulture = cultureInfo;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,9 +23,11 @@ builder.Services.AddDbContextFactory<BusOpsDbContext>(options =>
 // Configurar servicio de Email
 builder.Services.Configure<EmailConfiguration>(builder.Configuration.GetSection("EmailConfiguration"));
 builder.Services.AddScoped<EmailService>();
-builder.Services.AddScoped<FacturaPdfService>();
-builder.Services.AddScoped<PresupuestoPdfService>();
-builder.Services.AddScoped<PresupuestoPdfService>();
+builder.Services.AddScoped<FacturaPdfService>();builder.Services.AddScoped<FirmaDigitalService>();builder.Services.AddScoped<PresupuestoPdfService>();
+builder.Services.AddScoped<FacturaEService>();
+
+// Configurar servicio Multi-Tenant
+builder.Services.AddScoped<ITenantService, TenantService>();
 
 var app = builder.Build();
 

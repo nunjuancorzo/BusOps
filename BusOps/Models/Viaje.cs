@@ -22,6 +22,10 @@ public class Viaje
     public int RutaId { get; set; }
     public Ruta Ruta { get; set; } = null!;
     
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+    
     public ICollection<Reserva> Reservas { get; set; } = new List<Reserva>();
 }
 

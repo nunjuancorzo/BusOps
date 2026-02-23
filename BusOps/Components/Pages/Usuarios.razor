@@ -44,6 +44,7 @@
                             <th>Usuario</th>
                             <th>Nombre Completo</th>
                             <th>Email</th>
+                            <th>Empresa</th>
                             <th>Rol</th>
                             <th>Estado</th>
                             <th>Fecha Creación</th>
@@ -76,8 +77,20 @@
                                     <td><strong>@usuario.Username</strong></td>
                                     <td>@usuario.NombreCompleto</td>
                                     <td>@usuario.Email</td>
-                                    <td>
-                                        @if (usuario.Rol == "Administrador")
+                                    <td>                                        @if (usuario.Empresa != null)
+                                        {
+                                            <span class="badge bg-secondary">@usuario.Empresa.NombreComercial</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-dark">Global</span>
+                                        }
+                                    </td>
+                                    <td>                                        @if (usuario.Rol == "SuperAdministrador")
+                                        {
+                                            <span class="badge bg-primary"><i class="bi bi-star-fill"></i> @usuario.Rol</span>
+                                        }
+                                        else if (usuario.Rol == "Administrador")
                                         {
                                             <span class="badge bg-danger"><i class="bi bi-shield-fill-check"></i> @usuario.Rol</span>
                                         }
@@ -121,7 +134,7 @@
 <div class="modal fade" id="usuarioModal" tabindex="-1" aria-labelledby="usuarioModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #607D8B;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #6A1B9A;">
                 <h5 class="modal-title" id="usuarioModalLabel">
                     @if (usuarioSeleccionado.Id == 0)
                     {
@@ -167,7 +180,19 @@
                         <select class="form-select" @bind="usuarioSeleccionado.Rol">
                             <option value="Usuario">Usuario</option>
                             <option value="Administrador">Administrador</option>
+                            <option value="SuperAdministrador">Super Administrador</option>
                         </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Empresa</label>
+                        <select class="form-select" @bind="usuarioSeleccionado.EmpresaId">
+                            <option value="">-- Sin empresa (SuperAdmin) --</option>
+                            @foreach (var empresa in empresas)
+                            {
+                                <option value="@empresa.Id">@empresa.NombreComercial</option>
+                            }
+                        </select>
+                        <small class="text-muted">Dejar vacío solo para SuperAdministradores</small>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Estado</label>
@@ -225,14 +250,49 @@
     private string? successMessage;
     private bool hasChecked = false;
     private string nuevaPassword = string.Empty;
+    private int? CurrentEmpresaId;
+    private bool IsSuperAdmin = false;
+    private List<Empresa> empresas = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && !hasChecked)
         {
             hasChecked = true;
+            
+            // Cargar información de sesión
+            var roleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (roleResult.Success)
+            {
+                IsSuperAdmin = roleResult.Value == "SuperAdministrador";
+            }
+            
+            var empresaResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            if (empresaResult.Success)
+            {
+                CurrentEmpresaId = empresaResult.Value;
+            }
+            
+            Console.WriteLine($"👥 USUARIOS - EmpresaId: {CurrentEmpresaId}, IsSuperAdmin: {IsSuperAdmin}");
+            
+            await CargarEmpresas();
             await CargarUsuarios();
             StateHasChanged();
+        }
+    }
+
+    private async Task CargarEmpresas()
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = IsSuperAdmin;
+            context.CurrentEmpresaId = CurrentEmpresaId;
+            empresas = await context.Empresas.Where(e => e.Activa).OrderBy(e => e.NombreComercial).ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar empresas: {ex.Message}");
         }
     }
 
@@ -241,7 +301,9 @@
         try
         {
             using var context = await DbFactory.CreateDbContextAsync();
-            usuarios = await context.Usuarios.OrderBy(u => u.Id).ToListAsync();
+            context.IsSuperAdmin = true; // Siempre true para ver todos los usuarios (solo SuperAdmin puede acceder)
+            context.CurrentEmpresaId = CurrentEmpresaId;
+            usuarios = await context.Usuarios.Include(u => u.Empresa).OrderBy(u => u.Id).ToListAsync();
         }
         catch (Exception ex)
         {
@@ -268,7 +330,8 @@
             Email = usuario.Email,
             Rol = usuario.Rol,
             Activo = usuario.Activo,
-            FechaCreacion = usuario.FechaCreacion
+            FechaCreacion = usuario.FechaCreacion,
+            EmpresaId = usuario.EmpresaId
         };
         nuevaPassword = string.Empty;
         errorMessage = null;
@@ -296,6 +359,8 @@
             }
 
             using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = true; // SuperAdmin puede modificar todos los usuarios
+            context.CurrentEmpresaId = CurrentEmpresaId;
 
             if (usuarioSeleccionado.Id == 0)
             {
@@ -358,6 +423,8 @@
         try
         {
             using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = true; // SuperAdmin puede eliminar todos los usuarios
+            context.CurrentEmpresaId = CurrentEmpresaId;
             var usuario = await context.Usuarios.FindAsync(id);
             if (usuario != null)
             {

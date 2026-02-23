@@ -1,8 +1,10 @@
 @page "/viajes"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using BusOps.Data
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Viajes</PageTitle>
@@ -17,7 +19,7 @@
 <div class="modal fade" id="viajeModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #2196F3;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #AB47BC;">
                 <h5 class="modal-title">@(viajeSeleccionado.Id > 0 ? "Editar Viaje" : "Nuevo Viaje")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -110,7 +112,7 @@
 <div class="modal fade" id="rutaModal" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header text-white" style="background-color: #AB47BC;">
                 <h5 class="modal-title">Nueva Ruta</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -197,7 +199,7 @@
                         var autobus = autobuses.FirstOrDefault(a => a.Id == viaje.AutobusId);
                         var conductor = conductores.FirstOrDefault(c => c.Id == viaje.ConductorId);
                         
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarViajeDobleClick(viaje)" title="Doble click para editar">
                             <td>
                                 <strong>@ruta?.Nombre</strong><br/>
                                 <small class="text-muted">@ruta?.Origen → @ruta?.Destino</small>
@@ -248,21 +250,41 @@
     private DateTime fechaHoraSalida = DateTime.Now.AddDays(1).Date.AddHours(8);
     private DateTime fechaHoraLlegadaEstimada = DateTime.Now.AddDays(1).Date.AddHours(16);
     private EstadoViaje? filtroEstado = null;
+    private bool hasLoaded = false;
+    private int? CurrentEmpresaId;
+    private bool IsSuperAdmin;
 
     private IEnumerable<Viaje> ViajesFiltrados =>
         filtroEstado == null ? viajes : viajes.Where(v => v.Estado == filtroEstado);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarViajes();
-        await CargarRutas();
-        await CargarAutobuses();
-        await CargarConductores();
+        if (firstRender && !hasLoaded)
+        {
+            var empresaIdResult = await SessionStorage.GetAsync<int?>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var roleResult = await SessionStorage.GetAsync<string>("userRole");
+            IsSuperAdmin = roleResult.Success && roleResult.Value == Roles.SuperAdministrador;
+            
+            Console.WriteLine($"🚌 VIAJES - EmpresaId: {CurrentEmpresaId}, IsSuperAdmin: {IsSuperAdmin}");
+            
+            await CargarViajes();
+            await CargarRutas();
+            await CargarAutobuses();
+            await CargarConductores();
+            
+            hasLoaded = true;
+            StateHasChanged();
+        }
     }
 
     private async Task CargarViajes()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
         viajes = await context.Viajes
             .Include(v => v.Ruta)
             .Include(v => v.Autobus)
@@ -273,18 +295,27 @@
     private async Task CargarRutas()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
         rutas = await context.Rutas.Where(r => r.Activa).ToListAsync();
     }
 
     private async Task CargarAutobuses()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
         autobuses = await context.Autobuses.ToListAsync();
     }
 
     private async Task CargarConductores()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
         conductores = await context.Conductores.ToListAsync();
     }
 
@@ -350,8 +381,15 @@
     {
         viajeSeleccionado.FechaHoraSalida = fechaHoraSalida;
         viajeSeleccionado.FechaHoraLlegadaEstimada = fechaHoraLlegadaEstimada;
+        
+        if (viajeSeleccionado.Id == 0 && CurrentEmpresaId.HasValue)
+        {
+            viajeSeleccionado.EmpresaId = CurrentEmpresaId.Value;
+        }
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         if (viajeSeleccionado.Id == 0)
         {
@@ -359,7 +397,20 @@
         }
         else
         {
-            context.Viajes.Update(viajeSeleccionado);
+            // Para evitar problemas de tracking, obtener el viaje del contexto y actualizar sus propiedades
+            var viajeExistente = await context.Viajes.FindAsync(viajeSeleccionado.Id);
+            if (viajeExistente != null)
+            {
+                viajeExistente.FechaHoraSalida = viajeSeleccionado.FechaHoraSalida;
+                viajeExistente.FechaHoraLlegadaEstimada = viajeSeleccionado.FechaHoraLlegadaEstimada;
+                viajeExistente.FechaHoraLlegadaReal = viajeSeleccionado.FechaHoraLlegadaReal;
+                viajeExistente.Estado = viajeSeleccionado.Estado;
+                viajeExistente.AsientosDisponibles = viajeSeleccionado.AsientosDisponibles;
+                viajeExistente.PrecioViaje = viajeSeleccionado.PrecioViaje;
+                viajeExistente.AutobusId = viajeSeleccionado.AutobusId;
+                viajeExistente.ConductorId = viajeSeleccionado.ConductorId;
+                viajeExistente.RutaId = viajeSeleccionado.RutaId;
+            }
         }
         
         await context.SaveChangesAsync();
@@ -374,6 +425,9 @@
     private async Task EliminarViaje(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
         var viaje = await context.Viajes.FindAsync(id);
         if (viaje != null)
         {
@@ -396,8 +450,16 @@
     {
         // Convertir duración de horas a TimeSpan
         nuevaRuta.DuracionEstimada = TimeSpan.FromHours(duracionHoras);
+        
+        if (CurrentEmpresaId.HasValue)
+        {
+            nuevaRuta.EmpresaId = CurrentEmpresaId.Value;
+        }
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
         context.Rutas.Add(nuevaRuta);
         await context.SaveChangesAsync();
         
@@ -432,5 +494,11 @@
         if (asientos == 0) return "bg-danger";
         if (asientos < 10) return "bg-warning";
         return "bg-success";
+    }
+
+    private async Task EditarViajeDobleClick(Viaje viaje)
+    {
+        EditarViaje(viaje);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('viajeModal')).show()");
     }
 }

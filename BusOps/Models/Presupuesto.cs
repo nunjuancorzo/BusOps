@@ -25,6 +25,10 @@ public class Presupuesto
     public int? FacturaId { get; set; }
     public Factura? Factura { get; set; }
     
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+    
     // Navegación
     public ICollection<LineaPresupuesto> Lineas { get; set; } = new List<LineaPresupuesto>();
 }

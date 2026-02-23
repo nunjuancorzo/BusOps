@@ -19,6 +19,10 @@ public class Gasto
     public int? AutobusId { get; set; }
     public Autobus? Autobus { get; set; }
     
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+    
     // Documento adjunto
     public string? DocumentoNombre { get; set; }
     public byte[]? DocumentoContenido { get; set; }

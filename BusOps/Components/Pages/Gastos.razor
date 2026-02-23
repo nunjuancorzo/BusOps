@@ -4,8 +4,10 @@
 @using BusOps.Models
 @using BusOps.Helpers
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Gastos</PageTitle>
@@ -20,7 +22,7 @@
 <div class="modal fade" id="gastoModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #FF9800;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #8E24AA;">
                 <h5 class="modal-title">@(gastoSeleccionado.Id > 0 ? "Editar Gasto" : "Nuevo Gasto")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -155,7 +157,7 @@
                     {
                         var autobus = autobuses.FirstOrDefault(a => a.Id == gasto.AutobusId);
                         
-                        <tr>
+                        <tr @ondblclick="() => EditarGastoDobleClick(gasto)" style="cursor: pointer;" title="Doble click para editar">
                             <td>@gasto.Fecha.ToString("dd/MM/yyyy")</td>
                             <td>
                                 <span class="badge @ObtenerClaseTipo(gasto.Tipo)">
@@ -293,20 +295,41 @@
     private Gasto gastoSeleccionado = new();
     private DateTime fecha = DateTime.Now;
     private TipoGasto? filtroTipo = null;
+    
+    private bool IsSuperAdmin = false;
+    private int? CurrentEmpresaId = null;
+    private bool firstRender = true;
 
     private IEnumerable<Gasto> GastosFiltrados =>
         filtroTipo == null ? gastos : gastos.Where(g => g.Tipo == filtroTipo);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarGastos();
-        await CargarAutobuses();
-        await CargarProveedores();
+        if (firstRender)
+        {
+            this.firstRender = false;
+            
+            var empresaIdResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            CurrentEmpresaId = empresaIdResult.Success ? empresaIdResult.Value : null;
+            
+            var userRoleResult = await SessionStorage.GetAsync<string>("userRole");
+            if (userRoleResult.Success)
+            {
+                IsSuperAdmin = userRoleResult.Value == "SuperAdministrador";
+            }
+            
+            await CargarGastos();
+            await CargarAutobuses();
+            await CargarProveedores();
+            StateHasChanged();
+        }
     }
 
     private async Task CargarGastos()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         gastos = await context.Gastos
             .Include(g => g.Proveedor)
             .ToListAsync();
@@ -315,12 +338,16 @@
     private async Task CargarAutobuses()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         autobuses = await context.Autobuses.ToListAsync();
     }
 
     private async Task CargarProveedores()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         proveedores = await context.Proveedores.Where(p => p.Activo).ToListAsync();
     }
 
@@ -350,6 +377,12 @@
             DocumentoTipo = gasto.DocumentoTipo
         };
         fecha = gasto.Fecha;
+    }
+
+    private async void EditarGastoDobleClick(Gasto gasto)
+    {
+        EditarGasto(gasto);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('gastoModal')).show()");
     }
 
     private async Task SubirDocumento(InputFileChangeEventArgs e)
@@ -440,14 +473,33 @@
         gastoSeleccionado.Fecha = fecha;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         
         if (gastoSeleccionado.Id == 0)
         {
+            if (CurrentEmpresaId.HasValue)
+            {
+                gastoSeleccionado.EmpresaId = CurrentEmpresaId.Value;
+            }
             context.Gastos.Add(gastoSeleccionado);
         }
         else
         {
-            context.Gastos.Update(gastoSeleccionado);
+            var gastoExistente = await context.Gastos.FindAsync(gastoSeleccionado.Id);
+            if (gastoExistente != null)
+            {
+                gastoExistente.Fecha = gastoSeleccionado.Fecha;
+                gastoExistente.Tipo = gastoSeleccionado.Tipo;
+                gastoExistente.Monto = gastoSeleccionado.Monto;
+                gastoExistente.Descripcion = gastoSeleccionado.Descripcion;
+                gastoExistente.NumeroFactura = gastoSeleccionado.NumeroFactura;
+                gastoExistente.ProveedorId = gastoSeleccionado.ProveedorId;
+                gastoExistente.AutobusId = gastoSeleccionado.AutobusId;
+                gastoExistente.DocumentoNombre = gastoSeleccionado.DocumentoNombre;
+                gastoExistente.DocumentoContenido = gastoSeleccionado.DocumentoContenido;
+                gastoExistente.DocumentoTipo = gastoSeleccionado.DocumentoTipo;
+            }
         }
         
         await context.SaveChangesAsync();
@@ -462,6 +514,8 @@
     private async Task EliminarGasto(int id)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var gasto = await context.Gastos.FindAsync(id);
         if (gasto != null)
         {

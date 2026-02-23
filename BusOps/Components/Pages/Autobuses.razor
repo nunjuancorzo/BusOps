@@ -1,9 +1,12 @@
 @page "/autobuses"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using BusOps.Data
+@using BusOps.Models
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
 @inject NavigationManager NavigationManager
+@inject ProtectedSessionStorage SessionStorage
 @rendermode InteractiveServer
 
 <PageTitle>Autobuses</PageTitle>
@@ -34,9 +37,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var autobus in autobuses)
+                    @foreach (var autobus in AutobusesPaginados)
                     {
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarAutobusDobleClick(autobus)" title="Doble click para editar">
                             <td><strong>@autobus.Matricula</strong></td>
                             <td>@autobus.Marca @autobus.Modelo</td>
                             <td>@autobus.CapacidadPasajeros</td>
@@ -67,6 +70,34 @@
             {
                 <p class="text-center text-muted py-4">No hay autobuses registrados</p>
             }
+
+            @if (TotalPaginas > 1)
+            {
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted">
+                        Mostrando @((paginaActual - 1) * registrosPorPagina + 1)-@(Math.Min(paginaActual * registrosPorPagina, autobuses.Count)) de @autobuses.Count resultados
+                    </div>
+                    <nav>
+                        <ul class="pagination mb-0">
+                            <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" style="cursor: pointer;">Anterior</a>
+                            </li>
+                            
+                            @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                            {
+                                var pagina = i;
+                                <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                    <a class="page-link" @onclick="() => CambiarPagina(pagina)" style="cursor: pointer;">@pagina</a>
+                                </li>
+                            }
+                            
+                            <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                <a class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" style="cursor: pointer;">Siguiente</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            }
         </div>
     </div>
 </div>
@@ -75,7 +106,7 @@
 <div class="modal fade" id="autobusModal" tabindex="-1" aria-labelledby="autobusModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl">
         <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #FF9800;">
+            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #7B1FA2;">
                 <h5 class="modal-title" id="autobusModalLabel">@(autobusSeleccionado.Id == 0 ? "Nuevo Autobús" : "Editar Autobús")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -373,7 +404,7 @@
 <div class="modal fade" id="documentoModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header text-white" style="background-color: #FF9800;">
+            <div class="modal-header text-white" style="background-color: #7B1FA2;">
                 <h5 class="modal-title">Agregar Documento</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -436,15 +467,45 @@
     private DateTime? fechaVencimientoDoc;
     private string tabActiva = "datos";
     private IBrowserFile? archivoSeleccionado;
+    private int paginaActual = 1;
+    private const int registrosPorPagina = 15;
 
-    protected override async Task OnInitializedAsync()
+    private List<Autobus> AutobusesPaginados => autobuses
+        .Skip((paginaActual - 1) * registrosPorPagina)
+        .Take(registrosPorPagina)
+        .ToList();
+
+    private int TotalPaginas => (int)Math.Ceiling(autobuses.Count / (double)registrosPorPagina);
+
+    private bool hasLoaded = false;
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await CargarAutobuses();
+        if (firstRender && !hasLoaded)
+        {
+            hasLoaded = true;
+            await CargarAutobuses();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfigurarContextoMultiTenant(BusOpsDbContext context)
+    {
+        var empresaIdResult = await SessionStorage.GetAsync<int?>("EmpresaId");
+        var rolResult = await SessionStorage.GetAsync<string>("userRole");
+        
+        if (empresaIdResult.Success && empresaIdResult.Value.HasValue)
+        {
+            context.CurrentEmpresaId = empresaIdResult.Value;
+        }
+        
+        context.IsSuperAdmin = rolResult.Success && rolResult.Value == Roles.SuperAdministrador;
     }
 
     private async Task CargarAutobuses()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         autobuses = await context.Autobuses.ToListAsync();
     }
 
@@ -473,6 +534,7 @@
     private async Task EditarAutobus(Autobus autobus)
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var autobusDb = await context.Autobuses
             .Include(a => a.Documentos)
             .FirstOrDefaultAsync(a => a.Id == autobus.Id);
@@ -511,6 +573,7 @@
         autobusSeleccionado.ProximaRevisionITV = proximaRevisionITV;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         
         if (autobusSeleccionado.Id == 0)
         {
@@ -577,6 +640,7 @@
         nuevoDoc.AutobusId = autobusSeleccionado.Id;
         
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         context.Documentos.Add(nuevoDoc);
         await context.SaveChangesAsync();
         
@@ -594,6 +658,7 @@
         if (!confirmar) return;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var documento = await context.Documentos.FindAsync(documentoId);
         if (documento != null)
         {
@@ -610,6 +675,7 @@
         if (!confirmar) return;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        await ConfigurarContextoMultiTenant(context);
         var autobus = await context.Autobuses.FindAsync(id);
         if (autobus != null)
         {
@@ -643,5 +709,19 @@
             EstadoAutobus.FueraDeServicio => "bg-danger",
             _ => "bg-secondary"
         };
+    }
+
+    private void CambiarPagina(int numeroPagina)
+    {
+        if (numeroPagina >= 1 && numeroPagina <= TotalPaginas)
+        {
+            paginaActual = numeroPagina;
+        }
+    }
+
+    private async Task EditarAutobusDobleClick(Autobus autobus)
+    {
+        EditarAutobus(autobus);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('autobusModal')).show();");
     }
 }

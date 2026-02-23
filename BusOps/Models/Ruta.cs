@@ -11,6 +11,10 @@ public class Ruta
     public decimal PrecioBase { get; set; }
     public bool Activa { get; set; }
     
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+    
     // Relaciones
     public ICollection<Parada> Paradas { get; set; } = new List<Parada>();
     public ICollection<Viaje> Viajes { get; set; } = new List<Viaje>();

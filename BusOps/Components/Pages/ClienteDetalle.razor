@@ -76,6 +76,21 @@
         </div>
 
         <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Provincia</label>
+                <input type="text" class="form-control" @bind="cliente.Provincia" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">País</label>
+                <input type="text" class="form-control" @bind="cliente.Pais" placeholder="ESP" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Fax</label>
+                <input type="text" class="form-control" @bind="cliente.Fax" />
+            </div>
+        </div>
+
+        <div class="row">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Teléfono *</label>
                 <input type="text" class="form-control" @bind="cliente.Telefono" />
@@ -83,6 +98,84 @@
             <div class="col-md-6 mb-3">
                 <label class="form-label">Email *</label>
                 <input type="email" class="form-control" @bind="cliente.Email" />
+            </div>
+        </div>
+
+        <!-- Sección FacturaE -->
+        <hr class="my-4" />
+        <h5 class="mb-3"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE</h5>
+        
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="cliente.ClienteFacturaE" id="clienteFacturaECheck">
+                    <label class="form-check-label" for="clienteFacturaECheck">
+                        <strong>Cliente FacturaE</strong>
+                    </label>
+                    <small class="text-muted d-block">Marque esta opción para clientes que requieren facturación electrónica con validaciones completas (administraciones públicas, etc.)</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Tipo de Persona</label>
+                <select class="form-select" @bind="cliente.TipoPersona">
+                    <option value="@TipoPersona.Fisica">Física</option>
+                    <option value="@TipoPersona.Juridica">Jurídica</option>
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Tipo de Residencia</label>
+                <select class="form-select" @bind="cliente.TipoResidencia">
+                    <option value="@TipoResidencia.Residente">Residente</option>
+                    <option value="@TipoResidencia.UnionEuropea">Unión Europea</option>
+                    <option value="@TipoResidencia.Extranjero">Extranjero</option>
+                </select>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Código INE</label>
+                <input type="text" class="form-control" @bind="cliente.CodigoINE" placeholder="Para administraciones públicas" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Persona de Contacto (FacturaE)</label>
+                <input type="text" class="form-control" @bind="cliente.PersonaContacto" />
+            </div>
+        </div>
+
+        <!-- Datos Financieros -->
+        <hr class="my-4" />
+        <h5 class="mb-3"><i class="bi bi-credit-card"></i> Datos Financieros</h5>
+        
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Cuenta Bancaria / IBAN</label>
+                <input type="text" class="form-control" @bind="cliente.CuentaBancaria" placeholder="ES00 0000 0000 00 0000000000" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Forma de Pago</label>
+                <input type="text" class="form-control" @bind="cliente.FormaPago" placeholder="Transferencia, Efectivo, etc." />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Límite de Crédito (€)</label>
+                <input type="number" step="0.01" class="form-control" @bind="cliente.LimiteCredito" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Días de Pago</label>
+                <input type="number" class="form-control" @bind="cliente.DiasPago" placeholder="30, 60, 90..." />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Contacto Adicional</label>
+                <input type="text" class="form-control" @bind="cliente.Contacto" />
             </div>
         </div>
 

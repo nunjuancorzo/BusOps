@@ -1,6 +1,71 @@
-﻿<Router AppAssembly="typeof(Program).Assembly">
-    <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
-    </Found>
-</Router>
+﻿@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+@if (isLoaded)
+{
+    <Router AppAssembly="typeof(Program).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+    </Router>
+}
+else
+{
+    <div class="d-flex justify-content-center align-items-center" style="height: 100vh;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoaded = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Páginas públicas que no requieren autenticación
+            var paginasPublicas = new[] { "/login" };
+            var rutaActual = new Uri(NavigationManager.Uri).AbsolutePath.ToLower();
+
+            Console.WriteLine($"🔐 ROUTES - Verificando acceso a: {rutaActual}");
+
+            // Si está en una página pública, permitir acceso
+            if (paginasPublicas.Contains(rutaActual))
+            {
+                Console.WriteLine("✅ ROUTES - Página pública, acceso permitido");
+                isLoaded = true;
+                StateHasChanged();
+                return;
+            }
+
+            // Para páginas protegidas, verificar autenticación
+            try
+            {
+                var result = await SessionStorage.GetAsync<bool>("isAuthenticated");
+                
+                if (!result.Success || !result.Value)
+                {
+                    Console.WriteLine($"❌ ROUTES - No autenticado, redirigiendo a login desde: {rutaActual}");
+                    NavigationManager.NavigateTo("/login", true);
+                    return;
+                }
+
+                Console.WriteLine("✅ ROUTES - Usuario autenticado, acceso permitido");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ ROUTES - Error verificando autenticación: {ex.Message}");
+                NavigationManager.NavigateTo("/login", true);
+                return;
+            }
+
+            isLoaded = true;
+            StateHasChanged();
+        }
+    }
+}

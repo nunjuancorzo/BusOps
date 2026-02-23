@@ -14,6 +14,10 @@ public class MantenimientoAutobus
     public int KilometrajeMantenimiento { get; set; }
     public EstadoMantenimiento Estado { get; set; }
     
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+    
     // Relaciones
     public int AutobusId { get; set; }
     public Autobus Autobus { get; set; } = null!;

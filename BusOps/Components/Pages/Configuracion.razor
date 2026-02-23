@@ -32,13 +32,16 @@
                 <i class="bi bi-file-earmark-text"></i> Documentos
             </button>
         </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link @(tabActivo == "usuarios" ? "active" : "")" 
-                    @onclick='() => tabActivo = "usuarios"' 
-                    type="button">
-                <i class="bi bi-people-fill"></i> Gestión de Usuarios
-            </button>
-        </li>
+        @if (IsSuperAdmin)
+        {
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(tabActivo == "usuarios" ? "active" : "")" 
+                        @onclick='() => tabActivo = "usuarios"' 
+                        type="button">
+                    <i class="bi bi-people-fill"></i> Gestión de Usuarios
+                </button>
+            </li>
+        }
     </ul>
 
     <!-- Contenido de tabs -->
@@ -131,6 +134,87 @@
             </div>
         </div>
 
+        <!-- Datos FacturaE -->
+        <div class="card mb-4">
+            <div class="card-header" style="background-color: #9C27B0; color: white;">
+                <h5><i class="bi bi-file-earmark-text"></i> Datos para FacturaE (Facturación Electrónica)</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tipo de Persona</label>
+                        <select class="form-select" @bind="configuracion.TipoPersona">
+                            <option value="@TipoPersona.Fisica">Física</option>
+                            <option value="@TipoPersona.Juridica">Jurídica</option>
+                        </select>
+                        <small class="text-muted">Normalmente "Jurídica" para empresas</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tipo de Residencia</label>
+                        <select class="form-select" @bind="configuracion.TipoResidencia">
+                            <option value="@TipoResidencia.Residente">Residente</option>
+                            <option value="@TipoResidencia.UnionEuropea">Unión Europea</option>
+                            <option value="@TipoResidencia.Extranjero">Extranjero</option>
+                        </select>
+                        <small class="text-muted">Normalmente "Residente" para empresas españolas</small>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Nombre Comercial</label>
+                        <input type="text" class="form-control" @bind="configuracion.NombreComercial" placeholder="Nombre comercial (opcional)" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Persona de Contacto</label>
+                        <input type="text" class="form-control" @bind="configuracion.PersonaContacto" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Código INE</label>
+                        <input type="text" class="form-control" @bind="configuracion.CodigoINE" placeholder="Para administraciones públicas" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">CNAE</label>
+                        <input type="text" class="form-control" @bind="configuracion.CNAE" placeholder="Código actividad económica" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Libro Registro</label>
+                        <input type="text" class="form-control" @bind="configuracion.LibroRegistro" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Registro Mercantil</label>
+                        <input type="text" class="form-control" @bind="configuracion.RegistroMercantil" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Hoja</label>
+                        <input type="text" class="form-control" @bind="configuracion.HojaRegistro" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Folio</label>
+                        <input type="text" class="form-control" @bind="configuracion.FolioRegistro" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Sección</label>
+                        <input type="text" class="form-control" @bind="configuracion.SeccionRegistro" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tomo</label>
+                        <input type="text" class="form-control" @bind="configuracion.TomoRegistro" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Datos Adicionales</label>
+                        <input type="text" class="form-control" @bind="configuracion.DatosRegistroAdicionales" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Configuración de facturación -->
         <div class="card mb-4">
             <div class="card-header">
@@ -147,32 +231,46 @@
                 </div>
 
                 <div class="row">
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Serie de Factura *</label>
                         <input type="text" class="form-control" @bind="configuracion.SerieFactura" @bind:event="oninput" maxlength="10" />
-                        <small class="text-muted">Ej: FAC, FV, FACT</small>
+                        <small class="text-muted">Ej: AYE, FAC, FV</small>
                     </div>
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Subserie</label>
+                        <input type="text" class="form-control" @bind="configuracion.SubserieFactura" @bind:event="oninput" maxlength="5" />
+                        <small class="text-muted">Letra adicional (ej: A, B)</small>
+                    </div>
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Número Actual</label>
                         <input type="number" class="form-control" @bind="configuracion.NumeroFacturaActual" @bind:event="oninput" />
                         <small class="text-muted">Próxima factura usará este número</small>
                     </div>
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Longitud del Número</label>
-                        <input type="number" class="form-control" @bind="configuracion.LongitudNumeroFactura" @bind:event="oninput" min="3" max="8" />
-                        <small class="text-muted">Dígitos del número (ej: 4 = 0001)</small>
+                        <input type="number" class="form-control" @bind="configuracion.LongitudNumeroFactura" @bind:event="oninput" min="2" max="8" />
+                        <small class="text-muted">Dígitos (ej: 2 = 01)</small>
                     </div>
                 </div>
 
                 <div class="row">
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" @bind="configuracion.IncluirAñoEnSerie" id="incluirAño">
                             <label class="form-check-label" for="incluirAño">
                                 Incluir año en la serie
                             </label>
                         </div>
-                        <small class="text-muted">FAC-2025-0001</small>
+                        <small class="text-muted">Genera formato con año</small>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="configuracion.IncluirMesEnSerie" @bind:event="oninput" id="incluirMes">
+                            <label class="form-check-label" for="incluirMes">
+                                Incluir mes en la serie
+                            </label>
+                        </div>
+                        <small class="text-muted">Añade número de mes (01-12)</small>
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label">IVA por Defecto (%)</label>
@@ -253,6 +351,50 @@
                         <input type="text" class="form-control" @bind="configuracion.Contacto" placeholder="Nombre del contacto principal" />
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Certificado Digital para Firma Electrónica -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header" style="background-color: #9C27B0; color: white;">
+                <h5 class="mb-0"><i class="bi bi-shield-lock"></i> Certificado Digital para Firma Electrónica</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Sube tu certificado digital (.pfx o .p12) para firmar automáticamente los archivos XML de FacturaE.
+                    La firma digital es obligatoria para enviar facturas a la administración pública.
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Archivo de Certificado (.pfx / .p12)</label>
+                        <InputFile class="form-control" OnChange="CargarCertificado" accept=".pfx,.p12" />
+                        @if (!string.IsNullOrEmpty(configuracion.CertificadoRuta))
+                        {
+                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                <small class="text-success">
+                                    <i class="bi bi-check-circle"></i> Certificado cargado: @Path.GetFileName(configuracion.CertificadoRuta)
+                                </small>
+                                <button type="button" class="btn btn-sm btn-danger" @onclick="EliminarCertificado">
+                                    <i class="bi bi-trash"></i> Eliminar
+                                </button>
+                            </div>
+                        }
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Contraseña del Certificado</label>
+                        <input type="password" class="form-control" @bind="configuracion.CertificadoPassword" placeholder="Contraseña del certificado" />
+                        <small class="text-muted">Se guardará de forma segura</small>
+                    </div>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(certificadoInfo))
+                {
+                    <div class="alert alert-success">
+                        <strong><i class="bi bi-info-circle"></i> Información del Certificado:</strong>
+                        <pre class="mb-0 mt-2">@certificadoInfo</pre>
+                    </div>
+                }
             </div>
         </div>
 
@@ -344,7 +486,7 @@
 <div class="modal fade" id="documentoModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header text-white" style="background-color: #FF9800;">
+            <div class="modal-header text-white" style="background-color: #8E24AA;">
                 <h5 class="modal-title">Agregar Documento</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -408,6 +550,7 @@
     private ConfiguracionEmpresa configuracion = new();
     private bool mostrarMensaje = false;
     private string logoPreview = string.Empty;
+    private string certificadoInfo = string.Empty;
     private string tabActivo = "empresa";
     private string? currentUserRole;
     private bool hasChecked = false;
@@ -415,6 +558,8 @@
     private Documento nuevoDoc = new();
     private DateTime? fechaVencimientoDoc;
     private IBrowserFile? archivoSeleccionado;
+    private int? CurrentEmpresaId;
+    private bool IsSuperAdmin = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -422,15 +567,26 @@
         {
             hasChecked = true;
             
-            // Verificar si el usuario es administrador
+            // Verificar si el usuario es administrador o superadministrador
             var roleResult = await SessionStorage.GetAsync<string>("userRole");
-            if (!roleResult.Success || roleResult.Value != "Administrador")
+            if (!roleResult.Success || !(roleResult.Value == "Administrador" || roleResult.Value == "SuperAdministrador"))
             {
                 NavigationManager.NavigateTo("/");
                 return;
             }
             
             currentUserRole = roleResult.Value;
+            IsSuperAdmin = roleResult.Value == "SuperAdministrador";
+            
+            // Cargar EmpresaId para multi-tenancy (SuperAdmin no tiene EmpresaId)
+            var empresaResult = await SessionStorage.GetAsync<int>("EmpresaId");
+            if (empresaResult.Success)
+            {
+                CurrentEmpresaId = empresaResult.Value;
+            }
+            
+            Console.WriteLine($"🔧 CONFIGURACION - EmpresaId: {CurrentEmpresaId}, IsSuperAdmin: {IsSuperAdmin}");
+            
             await CargarConfiguracion();
             StateHasChanged();
         }
@@ -439,6 +595,11 @@
     private async Task CargarConfiguracion()
     {
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
+        Console.WriteLine($"=== CARGAR CONFIGURACIÓN ===");
+        Console.WriteLine($"IsSuperAdmin: {IsSuperAdmin}, CurrentEmpresaId: {CurrentEmpresaId}");
         
         // Cargar desde la base de datos
         configuracion = await context.ConfiguracionEmpresa
@@ -463,10 +624,53 @@
             DiasVencimientoPorDefecto = 30
         };
 
+        Console.WriteLine($"Configuración cargada - Id: {configuracion.Id}");
+        Console.WriteLine($"NIF: {configuracion.NIF}, Nombre: {configuracion.NombreEmpresa}");
+        Console.WriteLine($"TipoPersona: {configuracion.TipoPersona}, CodigoINE: {configuracion.CodigoINE}");
+
         // Cargar preview del logo si existe
         if (!string.IsNullOrEmpty(configuracion.LogoRuta))
         {
             logoPreview = configuracion.LogoRuta;
+        }
+
+        // Cargar información del certificado si existe
+        if (!string.IsNullOrEmpty(configuracion.CertificadoRuta) && 
+            !string.IsNullOrEmpty(configuracion.CertificadoPassword))
+        {
+            try
+            {
+                if (File.Exists(configuracion.CertificadoRuta))
+                {
+                    var cert = new System.Security.Cryptography.X509Certificates.X509Certificate2(
+                        configuracion.CertificadoRuta, 
+                        configuracion.CertificadoPassword
+                    );
+                    
+                    var ahora = DateTime.Now;
+                    var estaVigente = ahora >= cert.NotBefore && ahora <= cert.NotAfter;
+                    var diasRestantes = (cert.NotAfter - ahora).Days;
+                    
+                    certificadoInfo = $"Titular: {cert.Subject}\n" +
+                                    $"Emisor: {cert.Issuer}\n" +
+                                    $"Válido desde: {cert.NotBefore:dd/MM/yyyy}\n" +
+                                    $"Válido hasta: {cert.NotAfter:dd/MM/yyyy}\n" +
+                                    $"Estado: {(estaVigente ? "✅ VIGENTE" : "❌ EXPIRADO")}\n" +
+                                    $"Días restantes: {(estaVigente ? diasRestantes.ToString() : "N/A")}";
+                    
+                    Console.WriteLine($"Certificado cargado: {cert.Subject}");
+                }
+                else
+                {
+                    certificadoInfo = "⚠️ Archivo de certificado no encontrado. Vuelve a cargarlo.";
+                    Console.WriteLine($"Certificado no encontrado en: {configuracion.CertificadoRuta}");
+                }
+            }
+            catch (Exception ex)
+            {
+                certificadoInfo = $"❌ Error al cargar certificado: {ex.Message}";
+                Console.WriteLine($"Error al cargar certificado: {ex.Message}");
+            }
         }
 
         // Cargar documentos si existe configuración
@@ -521,12 +725,152 @@
         }
     }
 
+    private async Task EliminarCertificado()
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "¿Estás seguro de que deseas eliminar el certificado digital? Esta acción no se puede deshacer."))
+        {
+            return;
+        }
+
+        try
+        {
+            // Eliminar archivo físico si existe
+            if (!string.IsNullOrEmpty(configuracion.CertificadoRuta) && File.Exists(configuracion.CertificadoRuta))
+            {
+                File.Delete(configuracion.CertificadoRuta);
+                Console.WriteLine($"✅ Certificado físico eliminado: {configuracion.CertificadoRuta}");
+            }
+
+            // Limpiar campos en la configuración
+            configuracion.CertificadoRuta = null;
+            configuracion.CertificadoPassword = null;
+            certificadoInfo = string.Empty;
+
+            // Guardar cambios en la base de datos
+            using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = IsSuperAdmin;
+            context.CurrentEmpresaId = CurrentEmpresaId;
+
+            var configExistente = await context.ConfiguracionEmpresa.FindAsync(configuracion.Id);
+            if (configExistente != null)
+            {
+                configExistente.CertificadoRuta = null;
+                configExistente.CertificadoPassword = null;
+                await context.SaveChangesAsync();
+                Console.WriteLine("✅ Certificado eliminado de la base de datos");
+            }
+
+            await JSRuntime.InvokeVoidAsync("alert", "Certificado eliminado exitosamente");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Error al eliminar certificado: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al eliminar el certificado: {ex.Message}");
+        }
+    }
+
+    private async Task CargarCertificado(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        var archivo = e.File;
+        
+        if (archivo != null)
+        {
+            // Validar tamaño (máximo 5MB)
+            if (archivo.Size > 5 * 1024 * 1024)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El archivo de certificado no puede superar 5MB");
+                return;
+            }
+
+            // Validar extensión
+            var extension = Path.GetExtension(archivo.Name).ToLower();
+            if (extension != ".pfx" && extension != ".p12")
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Solo se aceptan archivos .pfx o .p12");
+                return;
+            }
+
+            // Crear directorio de certificados si no existe
+            var certificadosPath = Path.Combine(Environment.WebRootPath, "certificados");
+            if (!Directory.Exists(certificadosPath))
+            {
+                Directory.CreateDirectory(certificadosPath);
+            }
+
+            // Generar nombre único para el archivo
+            var nombreArchivo = $"certificado-empresa{extension}";
+            var rutaCompleta = Path.Combine(certificadosPath, nombreArchivo);
+
+            // Guardar archivo físicamente
+            using (var stream = archivo.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024))
+            {
+                using (var fileStream = new FileStream(rutaCompleta, FileMode.Create))
+                {
+                    await stream.CopyToAsync(fileStream);
+                }
+            }
+
+            // Actualizar ruta en la configuración
+            configuracion.CertificadoRuta = rutaCompleta;
+            
+            // Intentar cargar información del certificado (si se ha proporcionado contraseña)
+            if (!string.IsNullOrEmpty(configuracion.CertificadoPassword))
+            {
+                try
+                {
+                    var cert = new System.Security.Cryptography.X509Certificates.X509Certificate2(
+                        rutaCompleta, 
+                        configuracion.CertificadoPassword
+                    );
+                    
+                    var ahora = DateTime.Now;
+                    var estaVigente = ahora >= cert.NotBefore && ahora <= cert.NotAfter;
+                    var diasRestantes = (cert.NotAfter - ahora).Days;
+                    
+                    certificadoInfo = $"Titular: {cert.Subject}\n" +
+                                    $"Emisor: {cert.Issuer}\n" +
+                                    $"Válido desde: {cert.NotBefore:dd/MM/yyyy}\n" +
+                                    $"Válido hasta: {cert.NotAfter:dd/MM/yyyy}\n" +
+                                    $"Estado: {(estaVigente ? "✅ VIGENTE" : "❌ EXPIRADO")}\n" +
+                                    $"Días restantes: {(estaVigente ? diasRestantes.ToString() : "N/A")}";
+                    
+                    if (!estaVigente)
+                    {
+                        await JSRuntime.InvokeVoidAsync("alert", 
+                            $"⚠️ ADVERTENCIA: El certificado ha expirado el {cert.NotAfter:dd/MM/yyyy}");
+                    }
+                    else if (diasRestantes < 30)
+                    {
+                        await JSRuntime.InvokeVoidAsync("alert", 
+                            $"⚠️ ADVERTENCIA: El certificado expirará en {diasRestantes} días ({cert.NotAfter:dd/MM/yyyy})");
+                    }
+                    
+                    StateHasChanged();
+                }
+                catch (Exception ex)
+                {
+                    certificadoInfo = $"❌ No se pudo leer el certificado. Verifica la contraseña.\nError: {ex.Message}";
+                    await JSRuntime.InvokeVoidAsync("alert", $"Error al leer el certificado: {ex.Message}");
+                }
+            }
+            else
+            {
+                certificadoInfo = "📋 Certificado cargado. Introduce la contraseña y guarda para ver la información completa.";
+            }
+        }
+    }
+
     private string GenerarEjemploFactura()
     {
         var numero = configuracion.NumeroFacturaActual.ToString().PadLeft(configuracion.LongitudNumeroFactura, '0');
         if (configuracion.IncluirAñoEnSerie)
         {
-            return $"{configuracion.SerieFactura}-{DateTime.Now.Year}-{numero}";
+            // Formato: SERIE + AÑO + SUBSERIE + [MES] + NUMERO (ej: AYE2026A02-0001 o AYE2026A0001)
+            var subserie = string.IsNullOrWhiteSpace(configuracion.SubserieFactura) ? "" : configuracion.SubserieFactura;
+            var mes = configuracion.IncluirMesEnSerie ? DateTime.Now.Month.ToString("D2") : "";
+            var separador = configuracion.IncluirMesEnSerie ? "-" : "";
+            return $"{configuracion.SerieFactura}{DateTime.Now.Year}{subserie}{mes}{separador}{numero}";
         }
         return $"{configuracion.SerieFactura}-{numero}";
     }
@@ -546,12 +890,23 @@
         try
         {
             using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = IsSuperAdmin;
+            context.CurrentEmpresaId = CurrentEmpresaId;
+            
+            Console.WriteLine($"=== GUARDAR CONFIGURACIÓN ===");
+            Console.WriteLine($"IsSuperAdmin: {IsSuperAdmin}, CurrentEmpresaId: {CurrentEmpresaId}");
+            Console.WriteLine($"Datos a guardar - NIF: {configuracion.NIF}, Nombre: {configuracion.NombreEmpresa}");
+            Console.WriteLine($"TipoPersona: {configuracion.TipoPersona}, CodigoINE: {configuracion.CodigoINE}");
             
             // Verificar si ya existe una configuración
             var existente = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
             
+            Console.WriteLine($"Registro existente encontrado: {existente != null}, Id: {existente?.Id ?? 0}");
+            
             if (existente != null)
             {
+                Console.WriteLine($"Valores ANTES de actualizar - NIF: {existente.NIF}, CodigoINE: {existente.CodigoINE}");
+                
                 // Actualizar configuración existente
                 existente.NombreEmpresa = configuracion.NombreEmpresa;
                 existente.NIF = configuracion.NIF;
@@ -559,10 +914,29 @@
                 existente.Ciudad = configuracion.Ciudad;
                 existente.CodigoPostal = configuracion.CodigoPostal;
                 existente.Provincia = configuracion.Provincia;
+                existente.Pais = configuracion.Pais;
                 existente.Telefono = configuracion.Telefono;
+                existente.Fax = configuracion.Fax;
                 existente.Email = configuracion.Email;
                 existente.Web = configuracion.Web;
                 existente.IBAN = configuracion.IBAN;
+                
+                // Datos FacturaE
+                existente.TipoPersona = configuracion.TipoPersona;
+                existente.TipoResidencia = configuracion.TipoResidencia;
+                existente.NombreComercial = configuracion.NombreComercial;
+                existente.PersonaContacto = configuracion.PersonaContacto;
+                existente.CodigoINE = configuracion.CodigoINE;
+                existente.CNAE = configuracion.CNAE;
+                existente.LibroRegistro = configuracion.LibroRegistro;
+                existente.RegistroMercantil = configuracion.RegistroMercantil;
+                existente.HojaRegistro = configuracion.HojaRegistro;
+                existente.FolioRegistro = configuracion.FolioRegistro;
+                existente.SeccionRegistro = configuracion.SeccionRegistro;
+                existente.TomoRegistro = configuracion.TomoRegistro;
+                existente.DatosRegistroAdicionales = configuracion.DatosRegistroAdicionales;
+                
+                // Configuración de facturación
                 existente.SerieFactura = configuracion.SerieFactura;
                 existente.NumeroFacturaActual = configuracion.NumeroFacturaActual;
                 existente.LongitudNumeroFactura = configuracion.LongitudNumeroFactura;
@@ -572,6 +946,8 @@
                 existente.LongitudNumeroPresupuesto = configuracion.LongitudNumeroPresupuesto;
                 existente.IVAPorDefecto = configuracion.IVAPorDefecto;
                 existente.DiasVencimientoPorDefecto = configuracion.DiasVencimientoPorDefecto;
+                
+                // Datos financieros
                 existente.LogoRuta = configuracion.LogoRuta;
                 existente.CuentaBancaria = configuracion.CuentaBancaria;
                 existente.FormaPago = configuracion.FormaPago;
@@ -579,15 +955,33 @@
                 existente.DiasPago = configuracion.DiasPago;
                 existente.Contacto = configuracion.Contacto;
                 
+                // Certificado digital
+                existente.CertificadoRuta = configuracion.CertificadoRuta;
+                existente.CertificadoPassword = configuracion.CertificadoPassword;
+                
+                existente.EmpresaId = CurrentEmpresaId; // Asignar EmpresaId
+                
+                Console.WriteLine($"Valores DESPUÉS de asignar - NIF: {existente.NIF}, CodigoINE: {existente.CodigoINE}");
+                
                 context.ConfiguracionEmpresa.Update(existente);
             }
             else
             {
                 // Crear nueva configuración
+                Console.WriteLine("Creando nueva configuración");
+                if (CurrentEmpresaId.HasValue)
+                {
+                    configuracion.EmpresaId = CurrentEmpresaId;
+                }
                 context.ConfiguracionEmpresa.Add(configuracion);
             }
             
-            await context.SaveChangesAsync();
+            var cambios = await context.SaveChangesAsync();
+            Console.WriteLine($"✅ Configuración guardada. Registros afectados: {cambios}");
+            
+            // Recargar desde BD para verificar
+            var verificacion = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+            Console.WriteLine($"Verificación - NIF guardado: {verificacion?.NIF}, CodigoINE: {verificacion?.CodigoINE}");
             
             mostrarMensaje = true;
             StateHasChanged();
@@ -657,6 +1051,8 @@
         nuevoDoc.ConfiguracionEmpresaId = configuracion.Id;
         
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         context.Documentos.Add(nuevoDoc);
         await context.SaveChangesAsync();
         
@@ -674,6 +1070,8 @@
         if (!confirmar) return;
 
         using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
         var documento = await context.Documentos.FindAsync(documentoId);
         if (documento != null)
         {

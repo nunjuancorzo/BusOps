@@ -41,6 +41,10 @@ public class Conductor
     public bool HablaIngles { get; set; }
     public bool PuedeTrabajarFestivos { get; set; }
     
+    // Multi-tenant
+    public int EmpresaId { get; set; }
+    public Empresa Empresa { get; set; } = null!;
+    
     // Conductor ocasional
     public bool EsConductorOcasional { get; set; }
     public DateTime? FechaInicioConductorOcasional { get; set; }
