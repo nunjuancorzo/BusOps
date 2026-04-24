@@ -87,7 +87,7 @@
     public int Id { get; set; }
 
     private Reserva reserva = new();
-    private List<Viaje> viajes = new();
+    private List<ViajeFijo> viajes = new();
     private List<Ruta> rutas = new();
     private List<Pasajero> pasajeros = new();
 
@@ -128,9 +128,9 @@
         {
             new Ruta { Id = 1, Nombre = "Madrid - Barcelona" }
         };
-        viajes = new List<Viaje>
+        viajes = new List<ViajeFijo>
         {
-            new Viaje { Id = 1, RutaId = 1, FechaHoraSalida = DateTime.Now.AddDays(1), AsientosDisponibles = 20, Estado = EstadoViaje.Programado }
+            new ViajeFijo { Id = 1, RutaId = 1, FechaHoraSalida = DateTime.Now.AddDays(1), AsientosDisponibles = 20, Estado = EstadoViaje.Programado }
         };
         pasajeros = new List<Pasajero>
         {

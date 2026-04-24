@@ -43,8 +43,13 @@ public class LineaPresupuesto
     public decimal PrecioUnitario { get; set; }
     public decimal Subtotal { get; set; }
     public TipoLineaPresupuesto Tipo { get; set; } = TipoLineaPresupuesto.Servicio;
-    public int? ViajeId { get; set; }
-    public Viaje? Viaje { get; set; }
+    
+    // Relaciones con viajes (uno de los dos)
+    public int? ViajeIdFijo { get; set; }
+    public ViajeFijo? ViajeFijo { get; set; }
+    
+    public int? ViajeIdDiscrecional { get; set; }
+    public ViajeDiscrecional? ViajeDiscrecional { get; set; }
 }
 
 public enum TipoLineaPresupuesto

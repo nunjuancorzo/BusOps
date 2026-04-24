@@ -29,6 +29,10 @@ builder.Services.AddScoped<FacturaEService>();
 // Configurar servicio Multi-Tenant
 builder.Services.AddScoped<ITenantService, TenantService>();
 
+// Registrar servicio de IA (Ollama) para Busi
+builder.Services.AddHttpClient<IIAService, IAService>();
+builder.Services.AddScoped<IChatContextService, ChatContextService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

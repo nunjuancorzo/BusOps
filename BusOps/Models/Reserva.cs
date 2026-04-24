@@ -14,7 +14,7 @@ public class Reserva
     
     // Relaciones
     public int ViajeId { get; set; }
-    public Viaje Viaje { get; set; } = null!;
+    public ViajeFijo ViajeFijo { get; set; } = null!;
     
     public int PasajeroId { get; set; }
     public Pasajero Pasajero { get; set; } = null!;

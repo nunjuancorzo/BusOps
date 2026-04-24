@@ -1,10 +1,12 @@
 @page "/rutas"
 @using Microsoft.EntityFrameworkCore
 @using BusOps.Data
+@using BusOps.Models
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
 @inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
 <PageTitle>Rutas</PageTitle>
@@ -24,12 +26,13 @@
             <table class="table table-striped table-hover">
                 <thead>
                     <tr>
+                        <th>Código</th>
                         <th>Nombre</th>
-                        <th>Origen</th>
-                        <th>Destino</th>
-                        <th>Distancia</th>
-                        <th>Duración</th>
-                        <th>Precio Base</th>
+                        <th>Cliente</th>
+                        <th>Horario</th>
+                        <th>Días</th>
+                        <th>Plazas</th>
+                        <th>Tipo Servicio</th>
                         <th>Estado</th>
                         <th style="width: 150px;">Acciones</th>
                     </tr>
@@ -38,12 +41,43 @@
                     @foreach (var ruta in rutas)
                     {
                         <tr class="@(!ruta.Activa ? "table-secondary" : "")" style="cursor: pointer;" @ondblclick="() => EditarRutaDobleClick(ruta)" title="Doble click para editar">
-                            <td><strong>@ruta.Nombre</strong></td>
-                            <td>@ruta.Origen</td>
-                            <td>@ruta.Destino</td>
-                            <td>@ruta.DistanciaKm.ToString("N1") km</td>
-                            <td>@FormatearDuracion(ruta.DuracionEstimada)</td>
-                            <td>@ruta.PrecioBase.ToString("C2")</td>
+                            <td><strong>@ruta.Codigo</strong></td>
+                            <td>
+                                <strong>@ruta.Nombre</strong>
+                                @if (!string.IsNullOrEmpty(ruta.Origen) && !string.IsNullOrEmpty(ruta.Destino))
+                                {
+                                    <br /><small class="text-muted">@ruta.Origen → @ruta.Destino</small>
+                                }
+                            </td>
+                            <td>
+                                @if (ruta.ClienteId.HasValue)
+                                {
+                                    var cliente = clientes.FirstOrDefault(c => c.Id == ruta.ClienteId.Value);
+                                    if (cliente != null)
+                                    {
+                                        <span>@(cliente.Tipo == TipoCliente.Empresa ? cliente.NombreEmpresa : $"{cliente.Nombre} {cliente.Apellidos}")</span>
+                                    }
+                                }
+                            </td>
+                            <td>
+                                @if (ruta.HoraSalida.HasValue)
+                                {
+                                    <span>@ruta.HoraSalida.Value.ToString(@"hh\:mm")</span>
+                                }
+                            </td>
+                            <td>
+                                <small>
+                                    @if (ruta.Lunes) { <span class="badge bg-primary">L</span> }
+                                    @if (ruta.Martes) { <span class="badge bg-primary">M</span> }
+                                    @if (ruta.Miercoles) { <span class="badge bg-primary">X</span> }
+                                    @if (ruta.Jueves) { <span class="badge bg-primary">J</span> }
+                                    @if (ruta.Viernes) { <span class="badge bg-primary">V</span> }
+                                    @if (ruta.Sabado) { <span class="badge bg-info">S</span> }
+                                    @if (ruta.Domingo) { <span class="badge bg-info">D</span> }
+                                </small>
+                            </td>
+                            <td>@(ruta.Plazas?.ToString() ?? "-")</td>
+                            <td><small>@ruta.TipoServicio</small></td>
                             <td>
                                 @if (ruta.Activa)
                                 {
@@ -139,51 +173,268 @@
 
 <!-- Modal para Crear/Editar Ruta -->
 <div class="modal fade" id="rutaModal" tabindex="-1" aria-labelledby="rutaModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header text-white" style="background-color: #9C27B0;">
                 <h5 class="modal-title" id="rutaModalLabel">@(rutaSeleccionada2.Id == 0 ? "Nueva Ruta" : "Editar Ruta")</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-12 mb-3">
-                        <label class="form-label">Nombre de la Ruta *</label>
-                        <input type="text" class="form-control" @bind="rutaSeleccionada2.Nombre" placeholder="Ej: Madrid - Barcelona Express" />
+                <!-- Tabs -->
+                <ul class="nav nav-tabs" id="rutaTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab">
+                            <i class="bi bi-info-circle"></i> General
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="horarios-tab" data-bs-toggle="tab" data-bs-target="#horarios" type="button" role="tab">
+                            <i class="bi bi-clock"></i> Horarios y Días
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="asignaciones-tab" data-bs-toggle="tab" data-bs-target="#asignaciones" type="button" role="tab">
+                            <i class="bi bi-people"></i> Asignaciones
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="otros-tab" data-bs-toggle="tab" data-bs-target="#otros" type="button" role="tab">
+                            <i class="bi bi-gear"></i> Otros
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Tab Content -->
+                <div class="tab-content p-3" id="rutaTabContent">
+                    <!-- General -->
+                    <div class="tab-pane fade show active" id="general" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Código</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.Codigo" placeholder="Código" />
+                            </div>
+                            <div class="col-md-9 mb-3">
+                                <label class="form-label">Nombre *</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.Nombre" placeholder="Nombre de la ruta" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Descripción</label>
+                                <textarea class="form-control" rows="2" @bind="rutaSeleccionada2.Descripcion" placeholder="Descripción de la ruta"></textarea>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Origen</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.Origen" placeholder="Ciudad de origen" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Destino</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.Destino" placeholder="Ciudad de destino" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Referencia</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.Referencia" placeholder="Referencia" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Fecha Inicio</label>
+                                <input type="date" class="form-control" @bind="fechaInicio" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Fecha Fin</label>
+                                <input type="date" class="form-control" @bind="fechaFin" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Distancia (km)</label>
+                                <input type="number" step="0.1" class="form-control" @bind="rutaSeleccionada2.DistanciaKm" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Kilometros</label>
+                                <input type="number" class="form-control" @bind="rutaSeleccionada2.Kilometros" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Precio Base (€)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="rutaSeleccionada2.PrecioBase" />
+                            </div>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Activa" id="checkActiva">
+                            <label class="form-check-label" for="checkActiva">
+                                Ruta Activa
+                            </label>
+                        </div>
                     </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Origen *</label>
-                        <input type="text" class="form-control" @bind="rutaSeleccionada2.Origen" placeholder="Ciudad de origen" />
+
+                    <!-- Horarios y Días -->
+                    <div class="tab-pane fade" id="horarios" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Presentación</label>
+                                <input type="time" class="form-control" @bind="horaPresentacion" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Salida</label>
+                                <input type="time" class="form-control" @bind="horaSalida" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Llegada</label>
+                                <input type="time" class="form-control" @bind="horaLlegada" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Duración Estimada (horas)</label>
+                                <input type="number" step="0.5" class="form-control" @bind="duracionHoras" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Plazas</label>
+                                <input type="number" class="form-control" @bind="rutaSeleccionada2.Plazas" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Días de Operación</label>
+                                <div class="d-flex flex-wrap gap-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Lunes" id="checkLunes">
+                                        <label class="form-check-label" for="checkLunes">Lunes</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Martes" id="checkMartes">
+                                        <label class="form-check-label" for="checkMartes">Martes</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Miercoles" id="checkMiercoles">
+                                        <label class="form-check-label" for="checkMiercoles">Miércoles</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Jueves" id="checkJueves">
+                                        <label class="form-check-label" for="checkJueves">Jueves</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Viernes" id="checkViernes">
+                                        <label class="form-check-label" for="checkViernes">Viernes</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Sabado" id="checkSabado">
+                                        <label class="form-check-label" for="checkSabado">Sábado</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Domingo" id="checkDomingo">
+                                        <label class="form-check-label" for="checkDomingo">Domingo</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Destino *</label>
-                        <input type="text" class="form-control" @bind="rutaSeleccionada2.Destino" placeholder="Ciudad de destino" />
+
+                    <!-- Asignaciones -->
+                    <div class="tab-pane fade" id="asignaciones" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Cliente</label>
+                                <select class="form-select" @bind="rutaSeleccionada2.ClienteId">
+                                    <option value="">-- Seleccionar Cliente --</option>
+                                    @foreach (var cliente in clientes)
+                                    {
+                                        <option value="@cliente.Id">
+                                            @(cliente.Tipo == TipoCliente.Empresa ? cliente.NombreEmpresa : $"{cliente.Nombre} {cliente.Apellidos}")
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Código Cliente</label>
+                                <input type="number" class="form-control" @bind="rutaSeleccionada2.CodigoCliente" placeholder="Código del cliente" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Vehículo</label>
+                                <select class="form-select" @bind="rutaSeleccionada2.AutobusId">
+                                    <option value="">-- Seleccionar Vehículo --</option>
+                                    @foreach (var autobus in autobuses)
+                                    {
+                                        <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Matrícula Vehículo</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.VehiculoMatricula" placeholder="Matrícula" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Conductor</label>
+                                <select class="form-select" @bind="rutaSeleccionada2.ConductorId">
+                                    <option value="">-- Seleccionar Conductor --</option>
+                                    @foreach (var conductor in conductores)
+                                    {
+                                        <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre Conductor</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.ConductorNombre" placeholder="Nombre del conductor" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Asistente</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.Asistente" placeholder="Nombre del asistente" />
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Distancia (km) *</label>
-                        <input type="number" step="0.1" class="form-control" @bind="rutaSeleccionada2.DistanciaKm" />
+
+                    <!-- Otros -->
+                    <div class="tab-pane fade" id="otros" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Código Línea Regular</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.CodigoLineaRegular" placeholder="Código" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Línea Regular</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.LineaRegular" placeholder="Nombre de la línea regular" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Código Agregación</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.CodigoAgregacion" placeholder="Código" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Agregación</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.Agregacion" placeholder="Nombre de la agregación" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Código Tipo Servicio</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.CodigoTipoServicio" placeholder="Código" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Tipo Servicio</label>
+                                <input type="text" class="form-control" @bind="rutaSeleccionada2.TipoServicio" placeholder="Tipo de servicio" />
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Duración (horas) *</label>
-                        <input type="number" step="0.5" class="form-control" @bind="duracionHoras" />
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Precio Base (€) *</label>
-                        <input type="number" step="0.01" class="form-control" @bind="rutaSeleccionada2.PrecioBase" />
-                    </div>
-                </div>
-                <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" @bind="rutaSeleccionada2.Activa" id="checkActiva">
-                    <label class="form-check-label" for="checkActiva">
-                        Ruta Activa
-                    </label>
                 </div>
             </div>
             <div class="modal-footer">
+                @if (rutaSeleccionada2.Id > 0)
+                {
+                    <button type="button" class="btn btn-success" @onclick="CrearViajeDesdeRuta">
+                        <i class="bi bi-plus-circle"></i> Crear Viaje
+                    </button>
+                }
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarRuta">
                     <i class="bi bi-save"></i> Guardar
@@ -237,6 +488,9 @@
 
 @code {
     private List<Ruta> rutas = new();
+    private List<Cliente> clientes = new();
+    private List<Autobus> autobuses = new();
+    private List<Conductor> conductores = new();
     private List<Parada> todasLasParadas = new();
     private List<Parada> paradasRuta = new();
     private Ruta rutaSeleccionada2 = new();
@@ -244,6 +498,13 @@
     private double duracionHoras = 0;
     private double tiempoDesdeInicioHoras = 0;
     private Ruta? rutaSeleccionada;
+    
+    // Variables para campos de fecha y hora
+    private DateTime? fechaInicio;
+    private DateTime? fechaFin;
+    private TimeOnly? horaPresentacion;
+    private TimeOnly? horaSalida;
+    private TimeOnly? horaLlegada;
     
     private bool IsSuperAdmin = false;
     private int? CurrentEmpresaId = null;
@@ -266,6 +527,9 @@
             
             await CargarRutas();
             await CargarParadas();
+            await CargarClientes();
+            await CargarAutobuses();
+            await CargarConductores();
             StateHasChanged();
         }
     }
@@ -286,10 +550,39 @@
         todasLasParadas = await context.Paradas.ToListAsync();
     }
 
+    private async Task CargarClientes()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        clientes = await context.Clientes.Where(c => c.Activo).OrderBy(c => c.NombreEmpresa ?? c.Nombre).ToListAsync();
+    }
+
+    private async Task CargarAutobuses()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        autobuses = await context.Autobuses.OrderBy(a => a.Matricula).ToListAsync();
+    }
+
+    private async Task CargarConductores()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        conductores = await context.Conductores.Where(c => c.Estado == EstadoConductor.Activo).OrderBy(c => c.Nombre).ToListAsync();
+    }
+
     private void MostrarFormularioNuevo()
     {
         rutaSeleccionada2 = new Ruta { Activa = true };
         duracionHoras = 0;
+        fechaInicio = null;
+        fechaFin = null;
+        horaPresentacion = null;
+        horaSalida = null;
+        horaLlegada = null;
     }
 
     private void EditarRuta(Ruta ruta)
@@ -297,20 +590,62 @@
         rutaSeleccionada2 = new Ruta
         {
             Id = ruta.Id,
+            Codigo = ruta.Codigo,
             Nombre = ruta.Nombre,
+            Descripcion = ruta.Descripcion,
             Origen = ruta.Origen,
             Destino = ruta.Destino,
-            DistanciaKm = ruta.DistanciaKm,
+            Referencia = ruta.Referencia,
+            FechaInicio = ruta.FechaInicio,
+            FechaFin = ruta.FechaFin,
+            HoraPresentacion = ruta.HoraPresentacion,
+            HoraSalida = ruta.HoraSalida,
+            HoraLlegada = ruta.HoraLlegada,
             DuracionEstimada = ruta.DuracionEstimada,
+            Plazas = ruta.Plazas,
+            DistanciaKm = ruta.DistanciaKm,
+            Kilometros = ruta.Kilometros,
+            Lunes = ruta.Lunes,
+            Martes = ruta.Martes,
+            Miercoles = ruta.Miercoles,
+            Jueves = ruta.Jueves,
+            Viernes = ruta.Viernes,
+            Sabado = ruta.Sabado,
+            Domingo = ruta.Domingo,
+            CodigoLineaRegular = ruta.CodigoLineaRegular,
+            LineaRegular = ruta.LineaRegular,
+            CodigoAgregacion = ruta.CodigoAgregacion,
+            Agregacion = ruta.Agregacion,
+            CodigoTipoServicio = ruta.CodigoTipoServicio,
+            TipoServicio = ruta.TipoServicio,
+            Asistente = ruta.Asistente,
+            CodigoCliente = ruta.CodigoCliente,
+            ClienteId = ruta.ClienteId,
+            VehiculoMatricula = ruta.VehiculoMatricula,
+            AutobusId = ruta.AutobusId,
+            ConductorNombre = ruta.ConductorNombre,
+            ConductorId = ruta.ConductorId,
             PrecioBase = ruta.PrecioBase,
             Activa = ruta.Activa
         };
+        
         duracionHoras = ruta.DuracionEstimada.TotalHours;
+        fechaInicio = ruta.FechaInicio;
+        fechaFin = ruta.FechaFin;
+        horaPresentacion = ruta.HoraPresentacion.HasValue ? TimeOnly.FromTimeSpan(ruta.HoraPresentacion.Value) : null;
+        horaSalida = ruta.HoraSalida.HasValue ? TimeOnly.FromTimeSpan(ruta.HoraSalida.Value) : null;
+        horaLlegada = ruta.HoraLlegada.HasValue ? TimeOnly.FromTimeSpan(ruta.HoraLlegada.Value) : null;
     }
 
     private async Task GuardarRuta()
     {
+        // Convertir campos de fecha y hora
         rutaSeleccionada2.DuracionEstimada = TimeSpan.FromHours(duracionHoras);
+        rutaSeleccionada2.FechaInicio = fechaInicio;
+        rutaSeleccionada2.FechaFin = fechaFin;
+        rutaSeleccionada2.HoraPresentacion = horaPresentacion.HasValue ? horaPresentacion.Value.ToTimeSpan() : null;
+        rutaSeleccionada2.HoraSalida = horaSalida.HasValue ? horaSalida.Value.ToTimeSpan() : null;
+        rutaSeleccionada2.HoraLlegada = horaLlegada.HasValue ? horaLlegada.Value.ToTimeSpan() : null;
 
         using var context = await DbFactory.CreateDbContextAsync();
         context.IsSuperAdmin = IsSuperAdmin;
@@ -330,11 +665,41 @@
             var rutaExistente = await context.Rutas.FindAsync(rutaSeleccionada2.Id);
             if (rutaExistente != null)
             {
+                rutaExistente.Codigo = rutaSeleccionada2.Codigo;
                 rutaExistente.Nombre = rutaSeleccionada2.Nombre;
+                rutaExistente.Descripcion = rutaSeleccionada2.Descripcion;
                 rutaExistente.Origen = rutaSeleccionada2.Origen;
                 rutaExistente.Destino = rutaSeleccionada2.Destino;
-                rutaExistente.DistanciaKm = rutaSeleccionada2.DistanciaKm;
+                rutaExistente.Referencia = rutaSeleccionada2.Referencia;
+                rutaExistente.FechaInicio = rutaSeleccionada2.FechaInicio;
+                rutaExistente.FechaFin = rutaSeleccionada2.FechaFin;
+                rutaExistente.HoraPresentacion = rutaSeleccionada2.HoraPresentacion;
+                rutaExistente.HoraSalida = rutaSeleccionada2.HoraSalida;
+                rutaExistente.HoraLlegada = rutaSeleccionada2.HoraLlegada;
                 rutaExistente.DuracionEstimada = rutaSeleccionada2.DuracionEstimada;
+                rutaExistente.Plazas = rutaSeleccionada2.Plazas;
+                rutaExistente.DistanciaKm = rutaSeleccionada2.DistanciaKm;
+                rutaExistente.Kilometros = rutaSeleccionada2.Kilometros;
+                rutaExistente.Lunes = rutaSeleccionada2.Lunes;
+                rutaExistente.Martes = rutaSeleccionada2.Martes;
+                rutaExistente.Miercoles = rutaSeleccionada2.Miercoles;
+                rutaExistente.Jueves = rutaSeleccionada2.Jueves;
+                rutaExistente.Viernes = rutaSeleccionada2.Viernes;
+                rutaExistente.Sabado = rutaSeleccionada2.Sabado;
+                rutaExistente.Domingo = rutaSeleccionada2.Domingo;
+                rutaExistente.CodigoLineaRegular = rutaSeleccionada2.CodigoLineaRegular;
+                rutaExistente.LineaRegular = rutaSeleccionada2.LineaRegular;
+                rutaExistente.CodigoAgregacion = rutaSeleccionada2.CodigoAgregacion;
+                rutaExistente.Agregacion = rutaSeleccionada2.Agregacion;
+                rutaExistente.CodigoTipoServicio = rutaSeleccionada2.CodigoTipoServicio;
+                rutaExistente.TipoServicio = rutaSeleccionada2.TipoServicio;
+                rutaExistente.Asistente = rutaSeleccionada2.Asistente;
+                rutaExistente.CodigoCliente = rutaSeleccionada2.CodigoCliente;
+                rutaExistente.ClienteId = rutaSeleccionada2.ClienteId;
+                rutaExistente.VehiculoMatricula = rutaSeleccionada2.VehiculoMatricula;
+                rutaExistente.AutobusId = rutaSeleccionada2.AutobusId;
+                rutaExistente.ConductorNombre = rutaSeleccionada2.ConductorNombre;
+                rutaExistente.ConductorId = rutaSeleccionada2.ConductorId;
                 rutaExistente.PrecioBase = rutaSeleccionada2.PrecioBase;
                 rutaExistente.Activa = rutaSeleccionada2.Activa;
             }
@@ -472,5 +837,14 @@
     {
         EditarRuta(ruta);
         await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('rutaModal')).show()");
+    }
+
+    private async Task CrearViajeDesdeRuta()
+    {
+        // Guardar el ID de la ruta en SessionStorage para crear el viaje
+        await SessionStorage.SetAsync("RutaIdParaNuevoViaje", rutaSeleccionada2.Id);
+        
+        // Navegar a la página de viajes fijos
+        NavigationManager.NavigateTo("/viajes/fijos");
     }
 }

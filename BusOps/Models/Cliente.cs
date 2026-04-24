@@ -43,6 +43,7 @@ public class Cliente
     public ICollection<Factura> Facturas { get; set; } = new List<Factura>();
     public ICollection<Documento> Documentos { get; set; } = new List<Documento>();
     public ICollection<CentroAdministrativo> CentrosAdministrativos { get; set; } = new List<CentroAdministrativo>();
+    public ICollection<Ruta> Rutas { get; set; } = new List<Ruta>();
 }
 
 public enum TipoCliente

@@ -33,6 +33,7 @@ public class Empresa
     public ICollection<Presupuesto> Presupuestos { get; set; } = new List<Presupuesto>();
     public ICollection<Proveedor> Proveedores { get; set; } = new List<Proveedor>();
     public ICollection<Ruta> Rutas { get; set; } = new List<Ruta>();
-    public ICollection<Viaje> Viajes { get; set; } = new List<Viaje>();
+    public ICollection<ViajeFijo> ViajesFijos { get; set; } = new List<ViajeFijo>();
+    public ICollection<ViajeDiscrecional> ViajesDiscrecionales { get; set; } = new List<ViajeDiscrecional>();
     public ICollection<Reserva> Reservas { get; set; } = new List<Reserva>();
 }

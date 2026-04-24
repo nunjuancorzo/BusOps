@@ -62,9 +62,10 @@ public class Autobus
     public Empresa Empresa { get; set; } = null!;
     
     // Relaciones
-    public ICollection<Viaje> Viajes { get; set; } = new List<Viaje>();
+    public ICollection<ViajeFijo> ViajesFijos { get; set; } = new List<ViajeFijo>();
     public ICollection<MantenimientoAutobus> Mantenimientos { get; set; } = new List<MantenimientoAutobus>();
     public ICollection<Documento> Documentos { get; set; } = new List<Documento>();
+    public ICollection<Ruta> Rutas { get; set; } = new List<Ruta>();
 }
 
 public enum EstadoAutobus

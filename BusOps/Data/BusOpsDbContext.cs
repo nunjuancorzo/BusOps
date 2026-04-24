@@ -21,7 +21,8 @@ public class BusOpsDbContext : DbContext
     public DbSet<Conductor> Conductores { get; set; }
     public DbSet<Ruta> Rutas { get; set; }
     public DbSet<Parada> Paradas { get; set; }
-    public DbSet<Viaje> Viajes { get; set; }
+    public DbSet<ViajeFijo> ViajesFijos { get; set; }
+    public DbSet<ViajeDiscrecional> ViajesDiscrecionales { get; set; }
     public DbSet<Pasajero> Pasajeros { get; set; }
     public DbSet<Reserva> Reservas { get; set; }
     public DbSet<MantenimientoAutobus> MantenimientosAutobus { get; set; }
@@ -152,7 +153,7 @@ public class BusOpsDbContext : DbContext
             entity.Property(e => e.Modelo).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Estado).IsRequired()
                 .HasConversion<string>();
-            entity.HasMany(e => e.Viajes)
+            entity.HasMany(e => e.ViajesFijos)
                 .WithOne(v => v.Autobus)
                 .HasForeignKey(v => v.AutobusId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -183,7 +184,7 @@ public class BusOpsDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.AutobusId)
                 .OnDelete(DeleteBehavior.SetNull);
-            entity.HasMany(e => e.Viajes)
+            entity.HasMany(e => e.ViajesFijos)
                 .WithOne(v => v.Conductor)
                 .HasForeignKey(v => v.ConductorId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -204,7 +205,7 @@ public class BusOpsDbContext : DbContext
                 .WithOne(p => p.Ruta)
                 .HasForeignKey(p => p.RutaId)
                 .OnDelete(DeleteBehavior.Cascade);
-            entity.HasMany(e => e.Viajes)
+            entity.HasMany(e => e.ViajesFijos)
                 .WithOne(v => v.Ruta)
                 .HasForeignKey(v => v.RutaId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -223,19 +224,101 @@ public class BusOpsDbContext : DbContext
         });
 
         // =====================================================
-        // Configuración: Viaje
+        // Configuración: ViajeFijo
         // =====================================================
-        modelBuilder.Entity<Viaje>(entity =>
+        modelBuilder.Entity<ViajeFijo>(entity =>
         {
             entity.ToTable("Viajes");
             entity.HasKey(e => e.Id);
+            
+            // Propiedades de texto
+            entity.Property(e => e.Codigo).HasMaxLength(50);
+            entity.Property(e => e.Referencia).HasMaxLength(100);
+            entity.Property(e => e.Expediente).HasMaxLength(100);
+            entity.Property(e => e.CodigoCliente).HasMaxLength(50);
+            entity.Property(e => e.NombreCliente).HasMaxLength(255);
+            entity.Property(e => e.Vehiculo).HasMaxLength(100);
+            entity.Property(e => e.Matricula).HasMaxLength(20);
+            entity.Property(e => e.Conductor2).HasMaxLength(255);
+            
+            // Estado y enums
             entity.Property(e => e.Estado).IsRequired()
                 .HasConversion<string>();
+            
+            // Decimales
             entity.Property(e => e.PrecioViaje).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.TotalImporte).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.Importe).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.TotalProveedor).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.ImporteComisionista).HasColumnType("decimal(10,2)");
+            
+            // Relaciones
             entity.HasMany(e => e.Reservas)
-                .WithOne(r => r.Viaje)
+                .WithOne(r => r.ViajeFijo)
                 .HasForeignKey(r => r.ViajeId)
                 .OnDelete(DeleteBehavior.Cascade);
+            
+            // Relación con Cliente
+            entity.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            // Relación con Conductor 2
+            entity.HasOne(e => e.Conductor2Nav)
+                .WithMany()
+                .HasForeignKey(e => e.Conductor2Id)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // =====================================================
+        // Configuración: ViajeDiscrecional
+        // =====================================================
+        modelBuilder.Entity<ViajeDiscrecional>(entity =>
+        {
+            entity.ToTable("ViajesDiscrecionales");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Codigo).HasMaxLength(50);
+            entity.HasIndex(e => e.Codigo);
+            entity.Property(e => e.Estado).IsRequired()
+                .HasConversion<string>();
+            
+            // Decimales
+            entity.Property(e => e.TotalImporte).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.Importe).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.TotalProveedor).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.ImporteComisionista).HasColumnType("decimal(10,2)");
+            
+            // Textos
+            entity.Property(e => e.Descripcion).HasMaxLength(500);
+            entity.Property(e => e.Ampliacion).HasMaxLength(500);
+            entity.Property(e => e.Itinerario).HasMaxLength(1000);
+            entity.Property(e => e.NotasInternas).HasMaxLength(1000);
+            entity.Property(e => e.Notas).HasMaxLength(1000);
+            
+            // Relación con Cliente
+            entity.HasOne(e => e.Cliente)
+                .WithMany()
+                .HasForeignKey(e => e.ClienteId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            // Relación con Autobus
+            entity.HasOne(e => e.Autobus)
+                .WithMany()
+                .HasForeignKey(e => e.AutobusId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            // Relación con Conductor principal
+            entity.HasOne(e => e.Conductor1)
+                .WithMany()
+                .HasForeignKey(e => e.ConductorId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            // Relación con Conductor 2
+            entity.HasOne(e => e.Conductor2Nav)
+                .WithMany()
+                .HasForeignKey(e => e.Conductor2Id)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // =====================================================
@@ -426,9 +509,13 @@ public class BusOpsDbContext : DbContext
             entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(500);
             entity.Property(e => e.PrecioUnitario).HasColumnType("decimal(10,2)");
             entity.Property(e => e.Subtotal).HasColumnType("decimal(10,2)");
-            entity.HasOne(e => e.Viaje)
+            entity.HasOne(e => e.ViajeFijo)
                 .WithMany()
-                .HasForeignKey(e => e.ViajeId)
+                .HasForeignKey(e => e.ViajeIdFijo)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.ViajeDiscrecional)
+                .WithMany()
+                .HasForeignKey(e => e.ViajeIdDiscrecional)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -507,9 +594,13 @@ public class BusOpsDbContext : DbContext
             entity.Property(e => e.Descripcion).IsRequired().HasMaxLength(500);
             entity.Property(e => e.PrecioUnitario).HasColumnType("decimal(10,2)");
             entity.Property(e => e.Subtotal).HasColumnType("decimal(10,2)");
-            entity.HasOne(e => e.Viaje)
+            entity.HasOne(e => e.ViajeFijo)
                 .WithMany()
-                .HasForeignKey(e => e.ViajeId)
+                .HasForeignKey(e => e.ViajeIdFijo)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.ViajeDiscrecional)
+                .WithMany()
+                .HasForeignKey(e => e.ViajeIdDiscrecional)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -546,7 +637,10 @@ public class BusOpsDbContext : DbContext
         modelBuilder.Entity<Ruta>().HasQueryFilter(e => 
             IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
         
-        modelBuilder.Entity<Viaje>().HasQueryFilter(e => 
+        modelBuilder.Entity<ViajeFijo>().HasQueryFilter(e => 
+            IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
+        
+        modelBuilder.Entity<ViajeDiscrecional>().HasQueryFilter(e => 
             IsSuperAdmin || e.EmpresaId == CurrentEmpresaId);
         
         modelBuilder.Entity<Reserva>().HasQueryFilter(e => 

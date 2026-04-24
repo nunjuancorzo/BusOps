@@ -94,7 +94,7 @@
     [Parameter]
     public int Id { get; set; }
 
-    private Viaje viaje = new();
+    private ViajeFijo viaje = new();
     private DateTime fechaHoraSalida = DateTime.Now;
     private DateTime fechaHoraLlegadaEstimada = DateTime.Now.AddHours(3);
 
@@ -109,7 +109,7 @@
         if (Id > 0)
         {
             // TODO: Cargar desde base de datos
-            viaje = new Viaje
+            viaje = new ViajeFijo
             {
                 Id = Id,
                 RutaId = 1,
@@ -126,7 +126,7 @@
         }
         else
         {
-            viaje = new Viaje { Estado = EstadoViaje.Programado };
+            viaje = new ViajeFijo { Estado = EstadoViaje.Programado };
         }
     }
 

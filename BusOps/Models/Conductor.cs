@@ -57,8 +57,9 @@ public class Conductor
     public Autobus? Autobus { get; set; }
     
     // Relaciones
-    public ICollection<Viaje> Viajes { get; set; } = new List<Viaje>();
+    public ICollection<ViajeFijo> ViajesFijos { get; set; } = new List<ViajeFijo>();
     public ICollection<Documento> Documentos { get; set; } = new List<Documento>();
+    public ICollection<Ruta> Rutas { get; set; } = new List<Ruta>();
 }
 
 public enum EstadoConductor

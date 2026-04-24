@@ -1,106 +1,321 @@
-@page "/viajes"
+@page "/viajes/{tipo?}"
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using BusOps.Data
 @inject IJSRuntime JSRuntime
 @inject IDbContextFactory<BusOpsDbContext> DbFactory
 @inject ProtectedSessionStorage SessionStorage
+@inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
-<PageTitle>Viajes</PageTitle>
+<PageTitle>@(Tipo == "discrecionales" ? "Viajes Discrecionales" : "Viajes Fijos")</PageTitle>
 
-<div class="mb-3">
-    <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#viajeModal" @onclick="MostrarFormularioNuevo">
-        <span class="bi bi-plus-circle"></span> Nuevo Viaje
-    </button>
-</div>
+<h3 class="mb-4">
+    @if (Tipo == "discrecionales")
+    {
+        <i class="bi bi-airplane-fill" style="color: #9C27B0;"></i> <text>Viajes Discrecionales</text>
+    }
+    else
+    {
+        <i class="bi bi-calendar-week-fill" style="color: #003366;"></i> <text>Viajes Fijos</text>
+    }
+</h3>
 
-<!-- Modal Viaje -->
+@if (Tipo == "fijos" || string.IsNullOrEmpty(Tipo))
+{
+    <div class="mb-3">
+        <button class="btn" style="background-color: #003366; color: white;" data-bs-toggle="modal" data-bs-target="#viajeModal" @onclick="MostrarFormularioNuevo">
+            <span class="bi bi-plus-circle"></span> Nuevo Viaje Fijo
+        </button>
+    </div>
+}
+else
+{
+    <div class="mb-3">
+        <button class="btn" style="background-color: #9C27B0; color: white;" data-bs-toggle="modal" data-bs-target="#viajeDiscrecionalModal" @onclick="MostrarFormularioNuevoDiscrecional">
+            <span class="bi bi-plus-circle"></span> Nuevo Viaje Discrecional
+        </button>
+    </div>
+}
+
+<!-- Modal Viaje Fijo -->
 <div class="modal fade" id="viajeModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header text-white" style="flex-shrink: 0; background-color: #AB47BC;">
-                <h5 class="modal-title">@(viajeSeleccionado.Id > 0 ? "Editar Viaje" : "Nuevo Viaje")</h5>
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header text-white" style="background-color: #003366;">
+                <h5 class="modal-title">@(viajeSeleccionado.Id > 0 ? "Editar Viaje Fijo" : "Nuevo Viaje Fijo")</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <!-- Fila de botones fija -->
-            <div class="border-bottom p-2" style="flex-shrink: 0; background-color: #f8f9fa;">
-                <div class="d-flex gap-2 justify-content-end">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="bi bi-x-circle"></i> Cancelar
-                    </button>
-                    <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarViaje">
-                        <i class="bi bi-save"></i> Guardar
-                    </button>
-                </div>
-            </div>
-            <div class="modal-body" style="flex: 1; overflow-y: auto;">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Ruta *</label>
-                        <div class="input-group">
-                            <select class="form-select" @bind="viajeSeleccionado!.RutaId" @bind:after="OnRutaSeleccionada">
-                                <option value="0">-- Seleccione una ruta --</option>
-                                @foreach (var ruta in rutas.Where(r => r.Activa))
-                                {
-                                    <option value="@ruta.Id">@ruta.Nombre</option>
-                                }
-                            </select>
-                            <button class="btn btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#rutaModal" @onclick="MostrarFormularioNuevaRuta">
-                                <i class="bi bi-plus-circle"></i>
-                            </button>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#tab-basico-fijo">Básico</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-horarios-fijo">Horarios</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-asignaciones-fijo">Asignaciones</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-importes-fijo">Importes</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-adicional-fijo">Adicional</a>
+                    </li>
+                </ul>
+                
+                <div class="tab-content p-3">
+                    <!-- Tab Básico -->
+                    <div class="tab-pane fade show active" id="tab-basico-fijo">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Ruta *</label>
+                                <div class="input-group">
+                                    <select class="form-select" @bind="viajeSeleccionado!.RutaId" @bind:after="OnRutaSeleccionada">
+                                        <option value="0">-- Seleccione una ruta --</option>
+                                        @foreach (var ruta in rutas.Where(r => r.Activa))
+                                        {
+                                            <option value="@ruta.Id">@ruta.Nombre</option>
+                                        }
+                                    </select>
+                                    <button class="btn btn-outline-success" type="button" data-bs-toggle="modal" data-bs-target="#rutaModal" @onclick="MostrarFormularioNuevaRuta">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Código</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.Codigo" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Referencia</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.Referencia" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Cliente</label>
+                                <select class="form-select" @bind="viajeSeleccionado!.ClienteId">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var cliente in clientes)
+                                    {
+                                        <option value="@cliente.Id">@(cliente.NombreEmpresa ?? $"{cliente.Nombre} {cliente.Apellidos}")</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Plazas</label>
+                                <input type="number" class="form-control" @bind="viajeSeleccionado!.Plazas" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Estado *</label>
+                                <select class="form-select" @bind="viajeSeleccionado!.Estado">
+                                    @foreach (var estado in Enum.GetValues<EstadoViaje>())
+                                    {
+                                        <option value="@estado">@estado.GetDisplayName()</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripción</label>
+                            <textarea class="form-control" rows="2" @bind="viajeSeleccionado!.Descripcion"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Lugar de Salida</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.LugarSalida" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Lugar de Llegada</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.LugarLlegada" />
+                            </div>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="viajeSeleccionado!.Anulado" />
+                            <label class="form-check-label">Anulado</label>
                         </div>
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Autobús *</label>
-                        <select class="form-select" @bind="viajeSeleccionado!.AutobusId" @bind:after="OnAutobusSeleccionado">
-                            <option value="0">-- Seleccione un autobús --</option>
-                            @foreach (var autobus in autobuses.Where(a => a.Estado == EstadoAutobus.Disponible))
-                            {
-                                <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
-                            }
-                        </select>
+                    
+                    <!-- Tab Horarios -->
+                    <div class="tab-pane fade" id="tab-horarios-fijo">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Fecha y Hora de Salida *</label>
+                                <input type="datetime-local" class="form-control" @bind="fechaHoraSalida" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Fecha y Hora Llegada Estimada *</label>
+                                <input type="datetime-local" class="form-control" @bind="fechaHoraLlegadaEstimada" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Presentación</label>
+                                <input type="time" class="form-control" @bind="horaPresentacionFijo" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Salida</label>
+                                <input type="time" class="form-control" @bind="horaSalidaFijo" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Llegada</label>
+                                <input type="time" class="form-control" @bind="horaLlegadaFijo" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Kms Inicio</label>
+                                <input type="number" class="form-control" @bind="viajeSeleccionado!.KmsInicio" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Kms Fin</label>
+                                <input type="number" class="form-control" @bind="viajeSeleccionado!.KmsFin" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Kms Totales</label>
+                                <input type="number" class="form-control" @bind="viajeSeleccionado!.KmsTotales" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Asignaciones -->
+                    <div class="tab-pane fade" id="tab-asignaciones-fijo">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Autobús *</label>
+                                <select class="form-select" @bind="viajeSeleccionado!.AutobusId" @bind:after="OnAutobusSeleccionado">
+                                    <option value="0">-- Seleccione un autobús --</option>
+                                    @foreach (var autobus in autobuses.Where(a => a.Estado == EstadoAutobus.Disponible))
+                                    {
+                                        <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Asientos Disponibles *</label>
+                                <input type="number" class="form-control" @bind="viajeSeleccionado!.AsientosDisponibles" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Conductor Principal *</label>
+                                <select class="form-select" @bind="viajeSeleccionado!.ConductorId">
+                                    <option value="0">-- Seleccione un conductor --</option>
+                                    @foreach (var conductor in conductores.Where(c => c.Estado == EstadoConductor.Activo))
+                                    {
+                                        <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Conductor 2</label>
+                                <select class="form-select" @bind="viajeSeleccionado!.Conductor2Id">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var conductor in conductores.Where(c => c.Estado == EstadoConductor.Activo))
+                                    {
+                                        <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Responsable</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.Responsable" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre de Grupo</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.NombreGrupo" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Importes -->
+                    <div class="tab-pane fade" id="tab-importes-fijo">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Precio del Viaje (€) *</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeSeleccionado!.PrecioViaje" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Importe</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeSeleccionado!.Importe" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Total Importe</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeSeleccionado!.TotalImporte" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Total Proveedor</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeSeleccionado!.TotalProveedor" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Número Factura</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.NumeroFactura" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Comisionista</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.Comisionista" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Importe Comisionista</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeSeleccionado!.ImporteComisionista" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Adicional -->
+                    <div class="tab-pane fade" id="tab-adicional-fijo">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Expediente</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.Expediente" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Tipo Servicio</label>
+                                <input type="text" class="form-control" @bind="viajeSeleccionado!.ServicioTipo" />
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Ampliación</label>
+                            <textarea class="form-control" rows="2" @bind="viajeSeleccionado!.Ampliacion"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Itinerario</label>
+                            <textarea class="form-control" rows="2" @bind="viajeSeleccionado!.Itinerario"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notas Internas</label>
+                            <textarea class="form-control" rows="2" @bind="viajeSeleccionado!.NotasInternas"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-control" rows="2" @bind="viajeSeleccionado!.Notas"></textarea>
+                        </div>
                     </div>
                 </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Conductor *</label>
-                        <select class="form-select" @bind="viajeSeleccionado!.ConductorId">
-                            <option value="0">-- Seleccione un conductor --</option>
-                            @foreach (var conductor in conductores.Where(c => c.Estado == EstadoConductor.Activo))
-                            {
-                                <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
-                            }
-                        </select>
+            </div>
+            <div class="modal-footer">
+                <div class="d-flex justify-content-between w-100">
+                    <div>
+                        @if (viajeSeleccionado.Id > 0)
+                        {
+                            <button type="button" class="btn btn-success" @onclick="() => GenerarFacturaDesdeViajeFijo(viajeSeleccionado.Id)">
+                                <i class="bi bi-receipt"></i> Generar Factura
+                            </button>
+                        }
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Estado *</label>
-                        <select class="form-select" @bind="viajeSeleccionado!.Estado">
-                            @foreach (var estado in Enum.GetValues<EstadoViaje>())
-                            {
-                                <option value="@estado">@estado.GetDisplayName()</option>
-                            }
-                        </select>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Fecha y Hora de Salida *</label>
-                        <input type="datetime-local" class="form-control" @bind="fechaHoraSalida" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Fecha y Hora Llegada Estimada *</label>
-                        <input type="datetime-local" class="form-control" @bind="fechaHoraLlegadaEstimada" />
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Asientos Disponibles *</label>
-                        <input type="number" class="form-control" @bind="viajeSeleccionado!.AsientosDisponibles" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Precio del Viaje (€) *</label>
-                        <input type="number" step="0.01" class="form-control" @bind="viajeSeleccionado!.PrecioViaje" />
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn" style="background-color: #003366; color: white;" @onclick="GuardarViaje">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
                     </div>
                 </div>
             </div>
@@ -156,28 +371,290 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header">
-        <h5>Lista de Viajes</h5>
-    </div>
-    <div class="card-body">
-        <div class="mb-3">
-            <div class="btn-group" role="group">
-                <button class="btn @(filtroEstado == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(null)">
-                    Todos
-                </button>
-                <button class="btn @(filtroEstado == EstadoViaje.Programado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Programado)">
-                    Programados
-                </button>
-                <button class="btn @(filtroEstado == EstadoViaje.EnCurso ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.EnCurso)">
-                    En Curso
-                </button>
-                <button class="btn @(filtroEstado == EstadoViaje.Completado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Completado)">
-                    Completados
-                </button>
+<!-- Modal Viaje Discrecional -->
+<div class="modal fade" id="viajeDiscrecionalModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header text-white" style="background-color: #9C27B0;">
+                <h5 class="modal-title">@(viajeDiscrecionalSeleccionado.Id > 0 ? "Editar Viaje Discrecional" : "Nuevo Viaje Discrecional")</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#tab-basico">Básico</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-horarios">Horarios</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-asignaciones">Asignaciones</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-importes">Importes</a>
+                    </li>
+                </ul>
+                
+                <div class="tab-content p-3">
+                    <!-- Tab Básico -->
+                    <div class="tab-pane fade show active" id="tab-basico">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Código *</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Codigo" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Referencia</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Referencia" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Expediente</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Expediente" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Plazas</label>
+                                <input type="number" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Plazas" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Cliente</label>
+                                <select class="form-select" @bind="viajeDiscrecionalSeleccionado!.ClienteId">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var cliente in clientes)
+                                    {
+                                        <option value="@cliente.Id">@(cliente.NombreEmpresa ?? $"{cliente.Nombre} {cliente.Apellidos}")</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Estado</label>
+                                <select class="form-select" @bind="viajeDiscrecionalSeleccionado!.Estado">
+                                    @foreach (var estado in Enum.GetValues<EstadoViaje>())
+                                    {
+                                        <option value="@estado">@estado.GetDisplayName()</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripción</label>
+                            <textarea class="form-control" rows="2" @bind="viajeDiscrecionalSeleccionado!.Descripcion"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Ampliación</label>
+                            <textarea class="form-control" rows="2" @bind="viajeDiscrecionalSeleccionado!.Ampliacion"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Lugar de Salida</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.LugarSalida" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Lugar de Llegada</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.LugarLlegada" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Horarios -->
+                    <div class="tab-pane fade" id="tab-horarios">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Fecha Salida</label>
+                                <input type="date" class="form-control" @bind="viajeDiscrecionalSeleccionado!.FechaSalida" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Presentación</label>
+                                <input type="time" class="form-control" @bind="horaPresentacionDisc" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Salida</label>
+                                <input type="time" class="form-control" @bind="horaSalidaDisc" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Fecha Llegada</label>
+                                <input type="date" class="form-control" @bind="viajeDiscrecionalSeleccionado!.FechaLlegada" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Llegada</label>
+                                <input type="time" class="form-control" @bind="horaLlegadaDisc" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Tipo Servicio</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.ServicioTipo" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Kms Inicio</label>
+                                <input type="number" class="form-control" @bind="viajeDiscrecionalSeleccionado!.KmsInicio" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Kms Fin</label>
+                                <input type="number" class="form-control" @bind="viajeDiscrecionalSeleccionado!.KmsFin" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Kms Totales</label>
+                                <input type="number" class="form-control" @bind="viajeDiscrecionalSeleccionado!.KmsTotales" />
+                            </div>
+                        </div>
+                        <hr class="my-3" />
+                        <h6 class="text-muted mb-3">Horarios de Cierre</h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Presentación Cierre</label>
+                                <input type="time" class="form-control" @bind="horaPresentacionCierreDisc" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Salida Cierre</label>
+                                <input type="time" class="form-control" @bind="horaSalidaCierreDisc" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Hora Llegada Cierre</label>
+                                <input type="time" class="form-control" @bind="horaLlegadaCierreDisc" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Asignaciones -->
+                    <div class="tab-pane fade" id="tab-asignaciones">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Vehículo</label>
+                                <select class="form-select" @bind="viajeDiscrecionalSeleccionado!.AutobusId">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var autobus in autobuses)
+                                    {
+                                        <option value="@autobus.Id">@autobus.Matricula - @autobus.Marca @autobus.Modelo</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Matrícula (Manual)</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Matricula" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Conductor Principal</label>
+                                <select class="form-select" @bind="viajeDiscrecionalSeleccionado!.ConductorId">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var conductor in conductores)
+                                    {
+                                        <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Conductor 2</label>
+                                <select class="form-select" @bind="viajeDiscrecionalSeleccionado!.Conductor2Id">
+                                    <option value="">-- Seleccionar --</option>
+                                    @foreach (var conductor in conductores)
+                                    {
+                                        <option value="@conductor.Id">@conductor.Nombre @conductor.Apellidos</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Responsable</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Responsable" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre de Grupo</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.NombreGrupo" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Importes -->
+                    <div class="tab-pane fade" id="tab-importes">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Importe</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Importe" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Total Importe</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeDiscrecionalSeleccionado!.TotalImporte" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Total Proveedor</label>
+                                <input type="number" step="0.01" class="form-control" @bind="viajeDiscrecionalSeleccionado!.TotalProveedor" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Número Factura</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.NumeroFactura" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Comisionista</label>
+                                <input type="text" class="form-control" @bind="viajeDiscrecionalSeleccionado!.Comisionista" />
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notas Internas</label>
+                            <textarea class="form-control" rows="2" @bind="viajeDiscrecionalSeleccionado!.NotasInternas"></textarea>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="viajeDiscrecionalSeleccionado!.Anulado" />
+                            <label class="form-check-label">Anulado</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="d-flex justify-content-between w-100">
+                    <div>
+                        @if (viajeDiscrecionalSeleccionado.Id > 0)
+                        {
+                            <button type="button" class="btn btn-success" @onclick="() => GenerarFacturaDesdeViajeDiscrecional(viajeDiscrecionalSeleccionado.Id)">
+                                <i class="bi bi-receipt"></i> Generar Factura
+                            </button>
+                        }
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn" style="background-color: #9C27B0; color: white;" @onclick="GuardarViajeDiscrecional">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="table-responsive">
+    </div>
+</div>
+
+<!-- Lista de Viajes según el tipo -->
+@if (Tipo == "fijos" || string.IsNullOrEmpty(Tipo))
+{
+    <div class="card">
+        <div class="card-header">
+            <h5>Lista de Viajes Fijos</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <div class="btn-group" role="group">
+                    <button class="btn @(filtroEstado == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(null)">
+                        Todos
+                    </button>
+                    <button class="btn @(filtroEstado == EstadoViaje.Programado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Programado)">
+                        Programados
+                    </button>
+                    <button class="btn @(filtroEstado == EstadoViaje.EnCurso ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.EnCurso)">
+                        En Curso
+                    </button>
+                    <button class="btn @(filtroEstado == EstadoViaje.Completado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Completado)">
+                        Completados
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive">
             <table class="table table-striped table-hover">
                 <thead>
                     <tr>
@@ -193,7 +670,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var viaje in ViajesFiltrados)
+                    @foreach (var viaje in ViajesFijosFiltrados)
                     {
                         var ruta = rutas.FirstOrDefault(r => r.Id == viaje.RutaId);
                         var autobus = autobuses.FirstOrDefault(a => a.Id == viaje.AutobusId);
@@ -231,31 +708,135 @@
                     }
                 </tbody>
             </table>
-            @if (!ViajesFiltrados.Any())
+            @if (!ViajesFijosFiltrados.Any())
             {
-                <p class="text-center text-muted py-4">No hay viajes registrados</p>
+                <p class="text-center text-muted py-4">No hay viajes fijos registrados</p>
             }
         </div>
     </div>
 </div>
+}
+else
+{
+    <!-- Lista de Viajes Discrecionales -->
+    <div class="card">
+        <div class="card-header">
+            <h5>Lista de Viajes Discrecionales</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <div class="btn-group" role="group">
+                    <button class="btn @(filtroEstado == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(null)">
+                        Todos
+                    </button>
+                    <button class="btn @(filtroEstado == EstadoViaje.Programado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Programado)">
+                        Programados
+                    </button>
+                    <button class="btn @(filtroEstado == EstadoViaje.Completado ? "btn-primary" : "btn-outline-primary")" @onclick="() => FiltrarPorEstado(EstadoViaje.Completado)">
+                        Completados
+                    </button>
+                    <button class="btn @(filtroEstado == EstadoViaje.Cancelado ? "btn-danger" : "btn-outline-danger")" @onclick="() => FiltrarPorEstado(EstadoViaje.Cancelado)">
+                        Cancelados
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Código</th>
+                            <th>Cliente</th>
+                            <th>Descripción</th>
+                            <th>Fecha Salida</th>
+                            <th>Plazas</th>
+                            <th>Vehículo</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var viaje in ViajesDiscrecionalesFiltrados)
+                        {
+                            var cliente = clientes.FirstOrDefault(c => c.Id == viaje.ClienteId);
+                            var autobus = autobuses.FirstOrDefault(a => a.Id == viaje.AutobusId);
+                            
+                            <tr style="cursor: pointer;" @ondblclick="() => EditarViajeDiscrecionalDobleClick(viaje)" title="Doble click para editar">
+                                <td><strong>@viaje.Codigo</strong></td>
+                                <td>@(cliente?.NombreEmpresa ?? cliente?.Nombre ?? viaje.NombreCliente)</td>
+                                <td>
+                                    <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@viaje.Descripcion">
+                                        @viaje.Descripcion
+                                    </div>
+                                </td>
+                                <td>@(viaje.FechaSalida?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                <td>@(viaje.Plazas?.ToString() ?? "-")</td>
+                                <td>@(autobus?.Matricula ?? viaje.Matricula ?? "-")</td>
+                                <td>
+                                    <span class="badge @ObtenerClaseEstado(viaje.Estado)">
+                                        @viaje.Estado.GetDisplayName()
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#viajeDiscrecionalModal" @onclick="() => EditarViajeDiscrecional(viaje)" title="Editar">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="async () => await EliminarViajeDiscrecional(viaje.Id)" title="Eliminar">
+                                        <i class="bi bi-trash-fill"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (!ViajesDiscrecionalesFiltrados.Any())
+                {
+                    <p class="text-center text-muted py-4">No hay viajes discrecionales registrados</p>
+                }
+            </div>
+        </div>
+    </div>
+}
 
 @code {
-    private List<Viaje> viajes = new();
+    [Parameter]
+    public string? Tipo { get; set; }
+    
+    private List<ViajeFijo> viajesFijos = new();
+    private List<ViajeDiscrecional> viajesDiscrecionales = new();
     private List<Ruta> rutas = new();
     private List<Autobus> autobuses = new();
     private List<Conductor> conductores = new();
-    private Viaje viajeSeleccionado = new();
+    private List<Cliente> clientes = new();
+    private ViajeFijo viajeSeleccionado = new();
+    private ViajeDiscrecional viajeDiscrecionalSeleccionado = new();
     private Ruta nuevaRuta = new();
     private double duracionHoras = 8;
     private DateTime fechaHoraSalida = DateTime.Now.AddDays(1).Date.AddHours(8);
     private DateTime fechaHoraLlegadaEstimada = DateTime.Now.AddDays(1).Date.AddHours(16);
+    
+    // Variables para viajes fijos (horarios detallados)
+    private TimeOnly? horaPresentacionFijo;
+    private TimeOnly? horaSalidaFijo;
+    private TimeOnly? horaLlegadaFijo;
+    
+    // Variables para viajes discrecionales
+    private TimeOnly? horaPresentacionDisc;
+    private TimeOnly? horaSalidaDisc;
+    private TimeOnly? horaLlegadaDisc;
+    private TimeOnly? horaPresentacionCierreDisc;
+    private TimeOnly? horaSalidaCierreDisc;
+    private TimeOnly? horaLlegadaCierreDisc;
+    
     private EstadoViaje? filtroEstado = null;
     private bool hasLoaded = false;
     private int? CurrentEmpresaId;
     private bool IsSuperAdmin;
 
-    private IEnumerable<Viaje> ViajesFiltrados =>
-        filtroEstado == null ? viajes : viajes.Where(v => v.Estado == filtroEstado);
+    private IEnumerable<ViajeFijo> ViajesFijosFiltrados =>
+        filtroEstado == null ? viajesFijos : viajesFijos.Where(v => v.Estado == filtroEstado);
+    
+    private IEnumerable<ViajeDiscrecional> ViajesDiscrecionalesFiltrados =>
+        filtroEstado == null ? viajesDiscrecionales : viajesDiscrecionales.Where(v => v.Estado == filtroEstado);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -273,6 +854,19 @@
             await CargarRutas();
             await CargarAutobuses();
             await CargarConductores();
+            await CargarClientes();
+            
+            // Verificar si hay una ruta seleccionada para crear un nuevo viaje
+            var rutaIdResult = await SessionStorage.GetAsync<int>("RutaIdParaNuevoViaje");
+            if (rutaIdResult.Success && rutaIdResult.Value > 0)
+            {
+                // Eliminar INMEDIATAMENTE del SessionStorage para evitar bucles
+                var rutaId = rutaIdResult.Value;
+                await SessionStorage.DeleteAsync("RutaIdParaNuevoViaje");
+                
+                // Crear el viaje y abrir el modal
+                await CrearViajeDesdeRuta(rutaId);
+            }
             
             hasLoaded = true;
             StateHasChanged();
@@ -285,10 +879,17 @@
         context.IsSuperAdmin = IsSuperAdmin;
         context.CurrentEmpresaId = CurrentEmpresaId;
         
-        viajes = await context.Viajes
+        viajesFijos = await context.ViajesFijos
             .Include(v => v.Ruta)
             .Include(v => v.Autobus)
             .Include(v => v.Conductor)
+            .ToListAsync();
+        
+        viajesDiscrecionales = await context.ViajesDiscrecionales
+            .Include(v => v.Cliente)
+            .Include(v => v.Autobus)
+            .Include(v => v.Conductor1)
+            .Include(v => v.Conductor2Nav)
             .ToListAsync();
     }
 
@@ -318,35 +919,170 @@
         
         conductores = await context.Conductores.ToListAsync();
     }
+    
+    private async Task CargarClientes()
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        clientes = await context.Clientes.ToListAsync();
+    }
 
     private void MostrarFormularioNuevo()
     {
-        viajeSeleccionado = new Viaje
+        viajeSeleccionado = new ViajeFijo
         {
             Estado = EstadoViaje.Programado,
             AsientosDisponibles = 50
         };
         fechaHoraSalida = DateTime.Now.AddDays(1).Date.AddHours(8);
         fechaHoraLlegadaEstimada = DateTime.Now.AddDays(1).Date.AddHours(16);
+        horaPresentacionFijo = null;
+        horaSalidaFijo = null;
+        horaLlegadaFijo = null;
     }
 
-    private void EditarViaje(Viaje viaje)
+    private async Task CrearViajeDesdeRuta(int rutaId)
     {
-        viajeSeleccionado = new Viaje
+        // Buscar la ruta en la lista cargada
+        var ruta = rutas.FirstOrDefault(r => r.Id == rutaId);
+        
+        if (ruta == null)
+        {
+            // Si no está en la lista, cargarla desde la base de datos
+            using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = IsSuperAdmin;
+            context.CurrentEmpresaId = CurrentEmpresaId;
+            ruta = await context.Rutas.FindAsync(rutaId);
+        }
+        
+        if (ruta != null)
+        {
+            // Crear un nuevo viaje fijo preconfigurado con los datos de la ruta
+            viajeSeleccionado = new ViajeFijo
+            {
+                RutaId = ruta.Id,
+                Estado = EstadoViaje.Programado,
+                
+                // Asignar datos básicos de la ruta
+                ClienteId = ruta.ClienteId,
+                CodigoCliente = ruta.CodigoCliente?.ToString() ?? string.Empty,
+                
+                // Lugares
+                LugarSalida = ruta.Origen,
+                LugarLlegada = ruta.Destino,
+                
+                // Plazas y precio
+                Plazas = ruta.Plazas,
+                AsientosDisponibles = ruta.Plazas ?? 50,
+                PrecioViaje = ruta.PrecioBase,
+                
+                // Horarios de la ruta
+                HoraPresentacion = ruta.HoraPresentacion,
+                HoraSalida = ruta.HoraSalida,
+                HoraLlegada = ruta.HoraLlegada,
+                
+                // Kilometraje
+                KmsTotales = ruta.Kilometros,
+                
+                // Asignaciones
+                AutobusId = ruta.AutobusId ?? 0,
+                ConductorId = ruta.ConductorId ?? 0,
+                Matricula = ruta.VehiculoMatricula,
+                
+                // Tipo de servicio
+                CodigoTipoServicio = ruta.CodigoTipoServicio,
+                ServicioTipo = ruta.TipoServicio,
+                
+                // Descripción
+                Descripcion = ruta.Descripcion
+            };
+            
+            // Configurar fechas para mañana (o el siguiente día operativo según la ruta)
+            var fechaBase = DateTime.Now.AddDays(1).Date;
+            
+            // Calcular la hora de salida
+            if (ruta.HoraSalida.HasValue)
+            {
+                fechaHoraSalida = fechaBase.Add(ruta.HoraSalida.Value);
+            }
+            else
+            {
+                fechaHoraSalida = fechaBase.AddHours(8);
+            }
+            
+            // Calcular la hora de llegada estimada
+            if (ruta.HoraLlegada.HasValue)
+            {
+                fechaHoraLlegadaEstimada = fechaBase.Add(ruta.HoraLlegada.Value);
+            }
+            else if (ruta.DuracionEstimada != TimeSpan.Zero)
+            {
+                fechaHoraLlegadaEstimada = fechaHoraSalida.Add(ruta.DuracionEstimada);
+            }
+            else
+            {
+                fechaHoraLlegadaEstimada = fechaHoraSalida.AddHours(8);
+            }
+            
+            // Convertir TimeSpan a TimeOnly para los horarios
+            horaPresentacionFijo = ruta.HoraPresentacion.HasValue ? TimeOnly.FromTimeSpan(ruta.HoraPresentacion.Value) : null;
+            horaSalidaFijo = ruta.HoraSalida.HasValue ? TimeOnly.FromTimeSpan(ruta.HoraSalida.Value) : null;
+            horaLlegadaFijo = ruta.HoraLlegada.HasValue ? TimeOnly.FromTimeSpan(ruta.HoraLlegada.Value) : null;
+            
+            // Abrir el modal automáticamente
+            await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('viajeModal')).show()");
+        }
+    }
+
+    private void EditarViaje(ViajeFijo viaje)
+    {
+        viajeSeleccionado = new ViajeFijo
         {
             Id = viaje.Id,
+            Codigo = viaje.Codigo,
+            Referencia = viaje.Referencia,
+            Expediente = viaje.Expediente,
+            DescripcionExpediente = viaje.DescripcionExpediente,
             RutaId = viaje.RutaId,
             AutobusId = viaje.AutobusId,
             ConductorId = viaje.ConductorId,
+            Conductor2Id = viaje.Conductor2Id,
+            ClienteId = viaje.ClienteId,
             FechaHoraSalida = viaje.FechaHoraSalida,
             FechaHoraLlegadaEstimada = viaje.FechaHoraLlegadaEstimada,
             FechaHoraLlegadaReal = viaje.FechaHoraLlegadaReal,
             AsientosDisponibles = viaje.AsientosDisponibles,
+            Plazas = viaje.Plazas,
             PrecioViaje = viaje.PrecioViaje,
+            TotalImporte = viaje.TotalImporte,
+            Importe = viaje.Importe,
+            TotalProveedor = viaje.TotalProveedor,
+            NumeroFactura = viaje.NumeroFactura,
+            Descripcion = viaje.Descripcion,
+            Ampliacion = viaje.Ampliacion,
+            LugarSalida = viaje.LugarSalida,
+            LugarLlegada = viaje.LugarLlegada,
+            Itinerario = viaje.Itinerario,
+            KmsInicio = viaje.KmsInicio,
+            KmsFin = viaje.KmsFin,
+            KmsTotales = viaje.KmsTotales,
+            Responsable = viaje.Responsable,
+            NombreGrupo = viaje.NombreGrupo,
+            ServicioTipo = viaje.ServicioTipo,
+            NotasInternas = viaje.NotasInternas,
+            Notas = viaje.Notas,
+            Comisionista = viaje.Comisionista,
+            ImporteComisionista = viaje.ImporteComisionista,
+            Anulado = viaje.Anulado,
             Estado = viaje.Estado
         };
         fechaHoraSalida = viaje.FechaHoraSalida;
         fechaHoraLlegadaEstimada = viaje.FechaHoraLlegadaEstimada;
+        
+        horaPresentacionFijo = viaje.HoraPresentacion.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraPresentacion.Value) : null;
+        horaSalidaFijo = viaje.HoraSalida.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraSalida.Value) : null;
+        horaLlegadaFijo = viaje.HoraLlegada.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraLlegada.Value) : null;
     }
 
     private void OnRutaSeleccionada()
@@ -382,6 +1118,11 @@
         viajeSeleccionado.FechaHoraSalida = fechaHoraSalida;
         viajeSeleccionado.FechaHoraLlegadaEstimada = fechaHoraLlegadaEstimada;
         
+        // Convertir TimeOnly a TimeSpan para horarios detallados
+        viajeSeleccionado.HoraPresentacion = horaPresentacionFijo?.ToTimeSpan();
+        viajeSeleccionado.HoraSalida = horaSalidaFijo?.ToTimeSpan();
+        viajeSeleccionado.HoraLlegada = horaLlegadaFijo?.ToTimeSpan();
+        
         if (viajeSeleccionado.Id == 0 && CurrentEmpresaId.HasValue)
         {
             viajeSeleccionado.EmpresaId = CurrentEmpresaId.Value;
@@ -393,23 +1134,72 @@
         
         if (viajeSeleccionado.Id == 0)
         {
-            context.Viajes.Add(viajeSeleccionado);
+            context.ViajesFijos.Add(viajeSeleccionado);
         }
         else
         {
             // Para evitar problemas de tracking, obtener el viaje del contexto y actualizar sus propiedades
-            var viajeExistente = await context.Viajes.FindAsync(viajeSeleccionado.Id);
+            var viajeExistente = await context.ViajesFijos.FindAsync(viajeSeleccionado.Id);
             if (viajeExistente != null)
             {
+                // Campos básicos
+                viajeExistente.Codigo = viajeSeleccionado.Codigo;
+                viajeExistente.Referencia = viajeSeleccionado.Referencia;
+                viajeExistente.Expediente = viajeSeleccionado.Expediente;
+                viajeExistente.DescripcionExpediente = viajeSeleccionado.DescripcionExpediente;
+                
+                // Fechas y horarios
                 viajeExistente.FechaHoraSalida = viajeSeleccionado.FechaHoraSalida;
                 viajeExistente.FechaHoraLlegadaEstimada = viajeSeleccionado.FechaHoraLlegadaEstimada;
                 viajeExistente.FechaHoraLlegadaReal = viajeSeleccionado.FechaHoraLlegadaReal;
+                viajeExistente.HoraPresentacion = viajeSeleccionado.HoraPresentacion;
+                viajeExistente.HoraSalida = viajeSeleccionado.HoraSalida;
+                viajeExistente.HoraLlegada = viajeSeleccionado.HoraLlegada;
+                
+                // Estado y capacidad
                 viajeExistente.Estado = viajeSeleccionado.Estado;
                 viajeExistente.AsientosDisponibles = viajeSeleccionado.AsientosDisponibles;
+                viajeExistente.Plazas = viajeSeleccionado.Plazas;
+                viajeExistente.Anulado = viajeSeleccionado.Anulado;
+                
+                // Importes
                 viajeExistente.PrecioViaje = viajeSeleccionado.PrecioViaje;
+                viajeExistente.TotalImporte = viajeSeleccionado.TotalImporte;
+                viajeExistente.Importe = viajeSeleccionado.Importe;
+                viajeExistente.TotalProveedor = viajeSeleccionado.TotalProveedor;
+                viajeExistente.NumeroFactura = viajeSeleccionado.NumeroFactura;
+                viajeExistente.ImporteComisionista = viajeSeleccionado.ImporteComisionista;
+                
+                // Cliente
+                viajeExistente.ClienteId = viajeSeleccionado.ClienteId;
+                
+                // Asignaciones
                 viajeExistente.AutobusId = viajeSeleccionado.AutobusId;
                 viajeExistente.ConductorId = viajeSeleccionado.ConductorId;
+                viajeExistente.Conductor2Id = viajeSeleccionado.Conductor2Id;
                 viajeExistente.RutaId = viajeSeleccionado.RutaId;
+                
+                // Descripciones y lugares
+                viajeExistente.Descripcion = viajeSeleccionado.Descripcion;
+                viajeExistente.Ampliacion = viajeSeleccionado.Ampliacion;
+                viajeExistente.LugarSalida = viajeSeleccionado.LugarSalida;
+                viajeExistente.LugarLlegada = viajeSeleccionado.LugarLlegada;
+                viajeExistente.Itinerario = viajeSeleccionado.Itinerario;
+                
+                // Kilometraje
+                viajeExistente.KmsInicio = viajeSeleccionado.KmsInicio;
+                viajeExistente.KmsFin = viajeSeleccionado.KmsFin;
+                viajeExistente.KmsTotales = viajeSeleccionado.KmsTotales;
+                
+                // Gestión
+                viajeExistente.Responsable = viajeSeleccionado.Responsable;
+                viajeExistente.NombreGrupo = viajeSeleccionado.NombreGrupo;
+                viajeExistente.ServicioTipo = viajeSeleccionado.ServicioTipo;
+                viajeExistente.Comisionista = viajeSeleccionado.Comisionista;
+                
+                // Notas
+                viajeExistente.NotasInternas = viajeSeleccionado.NotasInternas;
+                viajeExistente.Notas = viajeSeleccionado.Notas;
             }
         }
         
@@ -428,12 +1218,119 @@
         context.IsSuperAdmin = IsSuperAdmin;
         context.CurrentEmpresaId = CurrentEmpresaId;
         
-        var viaje = await context.Viajes.FindAsync(id);
+        var viaje = await context.ViajesFijos.FindAsync(id);
         if (viaje != null)
         {
-            context.Viajes.Remove(viaje);
+            context.ViajesFijos.Remove(viaje);
             await context.SaveChangesAsync();
             await CargarViajes();
+        }
+    }
+
+    private async Task GenerarFacturaDesdeViajeFijo(int viajeId)
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = IsSuperAdmin;
+            context.CurrentEmpresaId = CurrentEmpresaId;
+            
+            // Obtener el viaje con sus datos relacionados
+            var viaje = await context.ViajesFijos
+                .Include(v => v.Cliente)
+                .Include(v => v.Ruta)
+                .FirstOrDefaultAsync(v => v.Id == viajeId);
+            
+            if (viaje == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se encontró el viaje");
+                return;
+            }
+            
+            if (viaje.ClienteId == null || viaje.ClienteId == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El viaje debe tener un cliente asignado para generar una factura");
+                return;
+            }
+            
+            // Obtener configuración para generar número de factura
+            var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+            string serie = config?.SerieFactura ?? "FAC";
+            string subserie = config?.SubserieFactura ?? "";
+            bool incluirAnio = config?.IncluirAñoEnSerie ?? true;
+            bool incluirMes = config?.IncluirMesEnSerie ?? false;
+            int longitudNumero = config?.LongitudNumeroFactura ?? 2;
+            
+            int anioActual = DateTime.Now.Year;
+            int mesActual = DateTime.Now.Month;
+            int siguienteNumero = config?.NumeroFacturaActual ?? 1;
+            
+            // Generar número de factura
+            string numeroFactura;
+            if (incluirAnio)
+            {
+                var mes = incluirMes ? mesActual.ToString("D2") : "";
+                var separador = incluirMes ? "-" : "";
+                numeroFactura = $"{serie}{anioActual}{subserie}{mes}{separador}{siguienteNumero.ToString().PadLeft(longitudNumero, '0')}";
+            }
+            else
+            {
+                numeroFactura = $"{serie}-{siguienteNumero.ToString().PadLeft(longitudNumero, '0')}";
+            }
+            
+            decimal ivaPorDefecto = config?.IVAPorDefecto ?? 21m;
+            
+            // Crear la factura
+            var nuevaFactura = new Factura
+            {
+                NumeroFactura = numeroFactura,
+                FechaEmision = DateTime.Now,
+                FechaOperacion = viaje.FechaHoraSalida,
+                ClienteId = viaje.ClienteId.Value,
+                BaseImponible = viaje.PrecioViaje,
+                PorcentajeIVA = ivaPorDefecto,
+                ImporteIVA = viaje.PrecioViaje * (ivaPorDefecto / 100),
+                Total = viaje.PrecioViaje * (1 + ivaPorDefecto / 100),
+                Estado = EstadoFactura.Borrador,
+                Concepto = $"Viaje Fijo - {viaje.Ruta?.Nombre ?? viaje.Codigo}",
+                EmpresaId = CurrentEmpresaId ?? 1
+            };
+            
+            context.Facturas.Add(nuevaFactura);
+            await context.SaveChangesAsync();
+            
+            // Crear línea de factura
+            var lineaFactura = new LineaFactura
+            {
+                FacturaId = nuevaFactura.Id,
+                Descripcion = $"Viaje {viaje.Ruta?.Nombre ?? viaje.Codigo} - {viaje.FechaHoraSalida:dd/MM/yyyy}",
+                Cantidad = 1,
+                PrecioUnitario = viaje.PrecioViaje,
+                Subtotal = viaje.PrecioViaje,
+                Tipo = TipoLineaFactura.Servicio,
+                ViajeIdFijo = viajeId
+            };
+            
+            context.LineasFactura.Add(lineaFactura);
+            
+            // Actualizar el número de factura en la configuración
+            if (config != null)
+            {
+                config.NumeroFacturaActual = siguienteNumero + 1;
+            }
+            
+            await context.SaveChangesAsync();
+            
+            // Cerrar modal y redirigir a facturas
+            await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('viajeModal')).hide()");
+            await JSRuntime.InvokeVoidAsync("alert", $"Factura {numeroFactura} generada correctamente");
+            
+            NavigationManager.NavigateTo("/facturas");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al generar factura: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al generar la factura: {ex.Message}");
         }
     }
 
@@ -496,9 +1393,392 @@
         return "bg-success";
     }
 
-    private async Task EditarViajeDobleClick(Viaje viaje)
+    private async Task EditarViajeDobleClick(ViajeFijo viaje)
     {
         EditarViaje(viaje);
         await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('viajeModal')).show()");
     }
+    
+    // =====================================================
+    // FUNCIONES PARA VIAJES DISCRECIONALES
+    // =====================================================
+    
+    private async Task EditarViajeDiscrecionalDobleClick(ViajeDiscrecional viaje)
+    {
+        EditarViajeDiscrecional(viaje);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('viajeDiscrecionalModal')).show()");
+    }
+    
+    private void MostrarFormularioNuevoDiscrecional()
+    {
+        viajeDiscrecionalSeleccionado = new ViajeDiscrecional
+        {
+            Estado = EstadoViaje.Programado,
+            FechaSalida = DateTime.Now.AddDays(1).Date
+        };
+        horaPresentacionDisc = null;
+        horaSalidaDisc = null;
+        horaLlegadaDisc = null;
+        horaPresentacionCierreDisc = null;
+        horaSalidaCierreDisc = null;
+        horaLlegadaCierreDisc = null;
+    }
+    
+    private void EditarViajeDiscrecional(ViajeDiscrecional viaje)
+    {
+        viajeDiscrecionalSeleccionado = new ViajeDiscrecional
+        {
+            Id = viaje.Id,
+            // Identificación
+            Codigo = viaje.Codigo,
+            Referencia = viaje.Referencia,
+            Expediente = viaje.Expediente,
+            DescripcionExpediente = viaje.DescripcionExpediente,
+            
+            // Fechas
+            FechaSalida = viaje.FechaSalida,
+            FechaLlegada = viaje.FechaLlegada,
+            
+            // Cliente
+            CodigoCliente = viaje.CodigoCliente,
+            NombreCliente = viaje.NombreCliente,
+            ClienteId = viaje.ClienteId,
+            
+            // Descripción
+            Descripcion = viaje.Descripcion,
+            Ampliacion = viaje.Ampliacion,
+            Plazas = viaje.Plazas,
+            
+            // Lugares y coordenadas
+            LugarSalida = viaje.LugarSalida,
+            PoblacionSalida = viaje.PoblacionSalida,
+            CoordXSalida = viaje.CoordXSalida,
+            CoordYSalida = viaje.CoordYSalida,
+            LugarLlegada = viaje.LugarLlegada,
+            PoblacionLlegada = viaje.PoblacionLlegada,
+            CoordXLlegada = viaje.CoordXLlegada,
+            CoordYLlegada = viaje.CoordYLlegada,
+            Itinerario = viaje.Itinerario,
+            
+            // Vehículo
+            Vehiculo = viaje.Vehiculo,
+            Matricula = viaje.Matricula,
+            AutobusId = viaje.AutobusId,
+            TipoVehiculoSolicitado = viaje.TipoVehiculoSolicitado,
+            TipoVehiculoAsignado = viaje.TipoVehiculoAsignado,
+            
+            // Conductores
+            Conductor = viaje.Conductor,
+            ConductorId = viaje.ConductorId,
+            Conductor2 = viaje.Conductor2,
+            Conductor2Id = viaje.Conductor2Id,
+            
+            // Importes
+            TotalImporte = viaje.TotalImporte,
+            Importe = viaje.Importe,
+            TotalProveedor = viaje.TotalProveedor,
+            NumeroFactura = viaje.NumeroFactura,
+            
+            // Kilometraje
+            KmsInicio = viaje.KmsInicio,
+            KmsFin = viaje.KmsFin,
+            KmsTotales = viaje.KmsTotales,
+            
+            // Clasificación
+            GrupoClientes = viaje.GrupoClientes,
+            INE = viaje.INE,
+            INE2 = viaje.INE2,
+            
+            // Gestión
+            Responsable = viaje.Responsable,
+            VueloTren = viaje.VueloTren,
+            NombreGrupo = viaje.NombreGrupo,
+            
+            // Tipo de servicio
+            CodigoTipoServicio = viaje.CodigoTipoServicio,
+            ServicioTipo = viaje.ServicioTipo,
+            
+            // Presupuesto
+            CodigoPresupuesto = viaje.CodigoPresupuesto,
+            
+            // Notas
+            NotasInternas = viaje.NotasInternas,
+            Notas = viaje.Notas,
+            
+            // Comisionista
+            Comisionista = viaje.Comisionista,
+            ImporteComisionista = viaje.ImporteComisionista,
+            
+            // Estado
+            Anulado = viaje.Anulado,
+            Estado = viaje.Estado
+        };
+        
+        // Convertir TimeSpan a TimeOnly para los horarios
+        horaPresentacionDisc = viaje.HoraPresentacion.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraPresentacion.Value) : null;
+        horaSalidaDisc = viaje.HoraSalida.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraSalida.Value) : null;
+        horaLlegadaDisc = viaje.HoraLlegada.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraLlegada.Value) : null;
+        horaPresentacionCierreDisc = viaje.HoraPresentacionCierre.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraPresentacionCierre.Value) : null;
+        horaSalidaCierreDisc = viaje.HoraSalidaCierre.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraSalidaCierre.Value) : null;
+        horaLlegadaCierreDisc = viaje.HoraLlegadaCierre.HasValue ? TimeOnly.FromTimeSpan(viaje.HoraLlegadaCierre.Value) : null;
+    }
+    
+    private async Task GuardarViajeDiscrecional()
+    {
+        // Convertir TimeOnly a TimeSpan
+        viajeDiscrecionalSeleccionado.HoraPresentacion = horaPresentacionDisc?.ToTimeSpan();
+        viajeDiscrecionalSeleccionado.HoraSalida = horaSalidaDisc?.ToTimeSpan();
+        viajeDiscrecionalSeleccionado.HoraLlegada = horaLlegadaDisc?.ToTimeSpan();
+        viajeDiscrecionalSeleccionado.HoraPresentacionCierre = horaPresentacionCierreDisc?.ToTimeSpan();
+        viajeDiscrecionalSeleccionado.HoraSalidaCierre = horaSalidaCierreDisc?.ToTimeSpan();
+        viajeDiscrecionalSeleccionado.HoraLlegadaCierre = horaLlegadaCierreDisc?.ToTimeSpan();
+        
+        if (viajeDiscrecionalSeleccionado.Id == 0 && CurrentEmpresaId.HasValue)
+        {
+            viajeDiscrecionalSeleccionado.EmpresaId = CurrentEmpresaId.Value;
+        }
+
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
+        if (viajeDiscrecionalSeleccionado.Id == 0)
+        {
+            context.ViajesDiscrecionales.Add(viajeDiscrecionalSeleccionado);
+        }
+        else
+        {
+            var viajeExistente = await context.ViajesDiscrecionales.FindAsync(viajeDiscrecionalSeleccionado.Id);
+            if (viajeExistente != null)
+            {
+                // Identificación
+                viajeExistente.Codigo = viajeDiscrecionalSeleccionado.Codigo;
+                viajeExistente.Referencia = viajeDiscrecionalSeleccionado.Referencia;
+                viajeExistente.Expediente = viajeDiscrecionalSeleccionado.Expediente;
+                viajeExistente.DescripcionExpediente = viajeDiscrecionalSeleccionado.DescripcionExpediente;
+                
+                // Fechas y horarios
+                viajeExistente.FechaSalida = viajeDiscrecionalSeleccionado.FechaSalida;
+                viajeExistente.HoraPresentacion = viajeDiscrecionalSeleccionado.HoraPresentacion;
+                viajeExistente.HoraSalida = viajeDiscrecionalSeleccionado.HoraSalida;
+                viajeExistente.FechaLlegada = viajeDiscrecionalSeleccionado.FechaLlegada;
+                viajeExistente.HoraLlegada = viajeDiscrecionalSeleccionado.HoraLlegada;
+                viajeExistente.HoraPresentacionCierre = viajeDiscrecionalSeleccionado.HoraPresentacionCierre;
+                viajeExistente.HoraSalidaCierre = viajeDiscrecionalSeleccionado.HoraSalidaCierre;
+                viajeExistente.HoraLlegadaCierre = viajeDiscrecionalSeleccionado.HoraLlegadaCierre;
+                
+                // Cliente
+                viajeExistente.CodigoCliente = viajeDiscrecionalSeleccionado.CodigoCliente;
+                viajeExistente.NombreCliente = viajeDiscrecionalSeleccionado.NombreCliente;
+                viajeExistente.ClienteId = viajeDiscrecionalSeleccionado.ClienteId;
+                
+                // Descripción
+                viajeExistente.Descripcion = viajeDiscrecionalSeleccionado.Descripcion;
+                viajeExistente.Ampliacion = viajeDiscrecionalSeleccionado.Ampliacion;
+                viajeExistente.Plazas = viajeDiscrecionalSeleccionado.Plazas;
+                
+                // Lugares y coordenadas
+                viajeExistente.LugarSalida = viajeDiscrecionalSeleccionado.LugarSalida;
+                viajeExistente.PoblacionSalida = viajeDiscrecionalSeleccionado.PoblacionSalida;
+                viajeExistente.CoordXSalida = viajeDiscrecionalSeleccionado.CoordXSalida;
+                viajeExistente.CoordYSalida = viajeDiscrecionalSeleccionado.CoordYSalida;
+                viajeExistente.LugarLlegada = viajeDiscrecionalSeleccionado.LugarLlegada;
+                viajeExistente.PoblacionLlegada = viajeDiscrecionalSeleccionado.PoblacionLlegada;
+                viajeExistente.CoordXLlegada = viajeDiscrecionalSeleccionado.CoordXLlegada;
+                viajeExistente.CoordYLlegada = viajeDiscrecionalSeleccionado.CoordYLlegada;
+                viajeExistente.Itinerario = viajeDiscrecionalSeleccionado.Itinerario;
+                
+                // Vehículo
+                viajeExistente.Vehiculo = viajeDiscrecionalSeleccionado.Vehiculo;
+                viajeExistente.Matricula = viajeDiscrecionalSeleccionado.Matricula;
+                viajeExistente.AutobusId = viajeDiscrecionalSeleccionado.AutobusId;
+                viajeExistente.TipoVehiculoSolicitado = viajeDiscrecionalSeleccionado.TipoVehiculoSolicitado;
+                viajeExistente.TipoVehiculoAsignado = viajeDiscrecionalSeleccionado.TipoVehiculoAsignado;
+                
+                // Conductores
+                viajeExistente.Conductor = viajeDiscrecionalSeleccionado.Conductor;
+                viajeExistente.ConductorId = viajeDiscrecionalSeleccionado.ConductorId;
+                viajeExistente.Conductor2 = viajeDiscrecionalSeleccionado.Conductor2;
+                viajeExistente.Conductor2Id = viajeDiscrecionalSeleccionado.Conductor2Id;
+                
+                // Importes
+                viajeExistente.TotalImporte = viajeDiscrecionalSeleccionado.TotalImporte;
+                viajeExistente.Importe = viajeDiscrecionalSeleccionado.Importe;
+                viajeExistente.TotalProveedor = viajeDiscrecionalSeleccionado.TotalProveedor;
+                viajeExistente.NumeroFactura = viajeDiscrecionalSeleccionado.NumeroFactura;
+                
+                // Kilometraje
+                viajeExistente.KmsInicio = viajeDiscrecionalSeleccionado.KmsInicio;
+                viajeExistente.KmsFin = viajeDiscrecionalSeleccionado.KmsFin;
+                viajeExistente.KmsTotales = viajeDiscrecionalSeleccionado.KmsTotales;
+                
+                // Clasificación
+                viajeExistente.GrupoClientes = viajeDiscrecionalSeleccionado.GrupoClientes;
+                viajeExistente.INE = viajeDiscrecionalSeleccionado.INE;
+                viajeExistente.INE2 = viajeDiscrecionalSeleccionado.INE2;
+                
+                // Gestión
+                viajeExistente.Responsable = viajeDiscrecionalSeleccionado.Responsable;
+                viajeExistente.VueloTren = viajeDiscrecionalSeleccionado.VueloTren;
+                viajeExistente.NombreGrupo = viajeDiscrecionalSeleccionado.NombreGrupo;
+                
+                // Tipo de servicio
+                viajeExistente.CodigoTipoServicio = viajeDiscrecionalSeleccionado.CodigoTipoServicio;
+                viajeExistente.ServicioTipo = viajeDiscrecionalSeleccionado.ServicioTipo;
+                
+                // Presupuesto
+                viajeExistente.CodigoPresupuesto = viajeDiscrecionalSeleccionado.CodigoPresupuesto;
+                
+                // Notas
+                viajeExistente.NotasInternas = viajeDiscrecionalSeleccionado.NotasInternas;
+                viajeExistente.Notas = viajeDiscrecionalSeleccionado.Notas;
+                
+                // Comisionista
+                viajeExistente.Comisionista = viajeDiscrecionalSeleccionado.Comisionista;
+                viajeExistente.ImporteComisionista = viajeDiscrecionalSeleccionado.ImporteComisionista;
+                
+                // Estado
+                viajeExistente.Anulado = viajeDiscrecionalSeleccionado.Anulado;
+                viajeExistente.Estado = viajeDiscrecionalSeleccionado.Estado;
+            }
+        }
+        
+        await context.SaveChangesAsync();
+        
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('viajeDiscrecionalModal')).hide()");
+        
+        await CargarViajes();
+        viajeDiscrecionalSeleccionado = new();
+    }
+    
+    private async Task EliminarViajeDiscrecional(int id)
+    {
+        using var context = await DbFactory.CreateDbContextAsync();
+        context.IsSuperAdmin = IsSuperAdmin;
+        context.CurrentEmpresaId = CurrentEmpresaId;
+        
+        var viaje = await context.ViajesDiscrecionales.FindAsync(id);
+        if (viaje != null)
+        {
+            context.ViajesDiscrecionales.Remove(viaje);
+            await context.SaveChangesAsync();
+            await CargarViajes();
+        }
+    }
+
+    private async Task GenerarFacturaDesdeViajeDiscrecional(int viajeId)
+    {
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            context.IsSuperAdmin = IsSuperAdmin;
+            context.CurrentEmpresaId = CurrentEmpresaId;
+            
+            // Obtener el viaje con sus datos relacionados
+            var viaje = await context.ViajesDiscrecionales
+                .Include(v => v.Cliente)
+                .FirstOrDefaultAsync(v => v.Id == viajeId);
+            
+            if (viaje == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se encontró el viaje");
+                return;
+            }
+            
+            if (viaje.ClienteId == null || viaje.ClienteId == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El viaje debe tener un cliente asignado para generar una factura");
+                return;
+            }
+            
+            // Obtener configuración para generar número de factura
+            var config = await context.ConfiguracionEmpresa.FirstOrDefaultAsync();
+            string serie = config?.SerieFactura ?? "FAC";
+            string subserie = config?.SubserieFactura ?? "";
+            bool incluirAnio = config?.IncluirAñoEnSerie ?? true;
+            bool incluirMes = config?.IncluirMesEnSerie ?? false;
+            int longitudNumero = config?.LongitudNumeroFactura ?? 2;
+            
+            int anioActual = DateTime.Now.Year;
+            int mesActual = DateTime.Now.Month;
+            int siguienteNumero = config?.NumeroFacturaActual ?? 1;
+            
+            // Generar número de factura
+            string numeroFactura;
+            if (incluirAnio)
+            {
+                var mes = incluirMes ? mesActual.ToString("D2") : "";
+                var separador = incluirMes ? "-" : "";
+                numeroFactura = $"{serie}{anioActual}{subserie}{mes}{separador}{siguienteNumero.ToString().PadLeft(longitudNumero, '0')}";
+            }
+            else
+            {
+                numeroFactura = $"{serie}-{siguienteNumero.ToString().PadLeft(longitudNumero, '0')}";
+            }
+            
+            decimal ivaPorDefecto = config?.IVAPorDefecto ?? 21m;
+            
+            // Calcular importe base (usar TotalImporte o Importe si está disponible, sino 0)
+            decimal importeBase = viaje.TotalImporte ?? viaje.Importe ?? 0m;
+            
+            // Crear la factura
+            var nuevaFactura = new Factura
+            {
+                NumeroFactura = numeroFactura,
+                FechaEmision = DateTime.Now,
+                FechaOperacion = viaje.FechaSalida ?? DateTime.Now,
+                ClienteId = viaje.ClienteId.Value,
+                BaseImponible = importeBase,
+                PorcentajeIVA = ivaPorDefecto,
+                ImporteIVA = importeBase * (ivaPorDefecto / 100),
+                Total = importeBase * (1 + ivaPorDefecto / 100),
+                Estado = EstadoFactura.Borrador,
+                Concepto = $"Viaje Discrecional - {viaje.Descripcion ?? viaje.Codigo}",
+                EmpresaId = CurrentEmpresaId ?? 1
+            };
+            
+            context.Facturas.Add(nuevaFactura);
+            await context.SaveChangesAsync();
+            
+            // Crear línea de factura
+            var descripcionLinea = viaje.Descripcion ?? viaje.Codigo ?? "Viaje Discrecional";
+            if (viaje.FechaSalida.HasValue)
+            {
+                descripcionLinea += $" - {viaje.FechaSalida.Value:dd/MM/yyyy}";
+            }
+            
+            var lineaFactura = new LineaFactura
+            {
+                FacturaId = nuevaFactura.Id,
+                Descripcion = descripcionLinea,
+                Cantidad = 1,
+                PrecioUnitario = importeBase,
+                Subtotal = importeBase,
+                Tipo = TipoLineaFactura.Servicio,
+                ViajeIdDiscrecional = viajeId
+            };
+            
+            context.LineasFactura.Add(lineaFactura);
+            
+            // Actualizar el número de factura en la configuración
+            if (config != null)
+            {
+                config.NumeroFacturaActual = siguienteNumero + 1;
+            }
+            
+            await context.SaveChangesAsync();
+            
+            // Cerrar modal y redirigir a facturas
+            await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('viajeDiscrecionalModal')).hide()");
+            await JSRuntime.InvokeVoidAsync("alert", $"Factura {numeroFactura} generada correctamente");
+            
+            NavigationManager.NavigateTo("/facturas");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al generar factura: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al generar la factura: {ex.Message}");
+        }
+    }
 }
+

@@ -229,7 +229,7 @@
 
 @code {
     private List<Reserva> reservas = new();
-    private List<Viaje> viajes = new();
+    private List<ViajeFijo> viajes = new();
     private List<Ruta> rutas = new();
     private List<Pasajero> pasajeros = new();
     private Reserva reservaSeleccionada = new();
@@ -271,7 +271,7 @@
         context.IsSuperAdmin = IsSuperAdmin;
         context.CurrentEmpresaId = CurrentEmpresaId;
         reservas = await context.Reservas
-            .Include(r => r.Viaje)
+            .Include(r => r.ViajeFijo)
             .Include(r => r.Pasajero)
             .ToListAsync();
     }
@@ -281,7 +281,7 @@
         using var context = await DbFactory.CreateDbContextAsync();
         context.IsSuperAdmin = IsSuperAdmin;
         context.CurrentEmpresaId = CurrentEmpresaId;
-        viajes = await context.Viajes
+        viajes = await context.ViajesFijos
             .Include(v => v.Ruta)
             .ToListAsync();
     }
@@ -357,11 +357,11 @@
             context.Reservas.Add(reservaSeleccionada);
             
             // Actualizar asientos disponibles
-            var viaje = await context.Viajes.FindAsync(reservaSeleccionada.ViajeId);
+            var viaje = await context.ViajesFijos.FindAsync(reservaSeleccionada.ViajeId);
             if (viaje != null && viaje.AsientosDisponibles > 0)
             {
                 viaje.AsientosDisponibles--;
-                context.Viajes.Update(viaje);
+                context.ViajesFijos.Update(viaje);
             }
         }
         else
@@ -399,11 +399,11 @@
         context.Reservas.Update(reserva);
         
         // Liberar asiento
-        var viaje = await context.Viajes.FindAsync(reserva.ViajeId);
+        var viaje = await context.ViajesFijos.FindAsync(reserva.ViajeId);
         if (viaje != null)
         {
             viaje.AsientosDisponibles++;
-            context.Viajes.Update(viaje);
+            context.ViajesFijos.Update(viaje);
         }
         
         await context.SaveChangesAsync();

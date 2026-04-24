@@ -450,7 +450,7 @@
 @code {
     private List<Autobus> autobuses = new();
     private List<Conductor> conductores = new();
-    private List<Viaje> viajes = new();
+    private List<ViajeFijo> viajes = new();
     private List<Ruta> rutas = new();
     private List<Reserva> reservas = new();
     private List<Factura> facturas = new();
@@ -459,8 +459,8 @@
     private List<Parada> paradas = new();
     private List<Presupuesto> presupuestos = new();
 
-    private IEnumerable<Viaje> viajesHoy => viajes.Where(v => v.FechaHoraSalida.Date == DateTime.Now.Date);
-    private IEnumerable<Viaje> proximosViajes => viajes.Where(v => v.FechaHoraSalida >= DateTime.Now).OrderBy(v => v.FechaHoraSalida);
+    private IEnumerable<ViajeFijo> viajesHoy => viajes.Where(v => v.FechaHoraSalida.Date == DateTime.Now.Date);
+    private IEnumerable<ViajeFijo> proximosViajes => viajes.Where(v => v.FechaHoraSalida >= DateTime.Now).OrderBy(v => v.FechaHoraSalida);
     private IEnumerable<Reserva> reservasActivas => reservas.Where(r => r.Estado != EstadoReserva.Cancelada && r.Estado != EstadoReserva.Utilizada);
     private IEnumerable<Reserva> reservasPagadas => reservas.Where(r => r.Estado == EstadoReserva.Pagada && r.FechaReserva.Month == DateTime.Now.Month && r.FechaReserva.Year == DateTime.Now.Year);
     private IEnumerable<Factura> facturasPagadas => facturas.Where(f => f.Estado == EstadoFactura.Pagada && f.FechaPago != null && f.FechaPago.Value.Month == DateTime.Now.Month && f.FechaPago.Value.Year == DateTime.Now.Year);
@@ -505,7 +505,7 @@
         // Cargar datos reales desde la base de datos con relaciones incluidas
         autobuses = await context.Autobuses.ToListAsync();
         conductores = await context.Conductores.ToListAsync();
-        viajes = await context.Viajes
+        viajes = await context.ViajesFijos
             .Include(v => v.Ruta)
             .Include(v => v.Autobus)
             .Include(v => v.Conductor)

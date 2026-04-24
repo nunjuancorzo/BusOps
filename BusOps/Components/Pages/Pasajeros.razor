@@ -219,7 +219,7 @@
 @code {
     private List<Pasajero> pasajeros = new();
     private List<Reserva> reservas = new();
-    private List<Viaje> viajes = new();
+    private List<ViajeFijo> viajes = new();
     private List<Ruta> rutas = new();
     private List<Reserva> reservasPasajero = new();
     private Pasajero pasajeroSeleccionado = new();
@@ -282,7 +282,7 @@
         context.IsSuperAdmin = IsSuperAdmin;
         context.CurrentEmpresaId = CurrentEmpresaId;
         reservas = await context.Reservas
-            .Include(r => r.Viaje)
+            .Include(r => r.ViajeFijo)
             .ThenInclude(v => v.Ruta)
             .ToListAsync();
     }

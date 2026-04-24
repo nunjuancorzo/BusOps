@@ -146,7 +146,7 @@
                     {
                         var autobus = autobuses.FirstOrDefault(a => a.Id == mant.AutobusId);
                         
-                        <tr>
+                        <tr style="cursor: pointer;" @ondblclick="() => EditarMantenimientoConModal(mant)">
                             <td>
                                 <strong>@autobus?.Matricula</strong><br/>
                                 <small class="text-muted">@autobus?.Marca @autobus?.Modelo</small>
@@ -383,6 +383,12 @@
         };
         fechaInicio = mantenimiento.FechaInicio;
         fechaFin = mantenimiento.FechaFin;
+    }
+
+    private async Task EditarMantenimientoConModal(MantenimientoAutobus mantenimiento)
+    {
+        EditarMantenimiento(mantenimiento);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('mantenimientoModal')).show()");
     }
 
     private async Task GuardarMantenimiento()

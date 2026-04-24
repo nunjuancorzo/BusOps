@@ -616,7 +616,7 @@
                     PrecioUnitario = l.PrecioUnitario,
                     Subtotal = l.Subtotal,
                     Tipo = l.Tipo,
-                    ViajeId = l.ViajeId
+                    ViajeIdFijo = l.ViajeIdFijo
                 }).ToList();
                 
                 // Abrir el modal después de cargar los datos
@@ -1006,7 +1006,7 @@
                     PrecioUnitario = lineaPresupuesto.PrecioUnitario,
                     Subtotal = lineaPresupuesto.Subtotal,
                     Tipo = (TipoLineaFactura)(int)lineaPresupuesto.Tipo, // Conversión de enum
-                    ViajeId = lineaPresupuesto.ViajeId
+                    ViajeIdFijo = lineaPresupuesto.ViajeIdFijo
                 };
                 context.LineasFactura.Add(lineaFactura);
             }
